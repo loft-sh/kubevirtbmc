@@ -41,6 +41,9 @@ type ComputerSystemV1220Boot struct {
 
 	BootSourceOverrideTarget ComputerSystemBootSource `json:"BootSourceOverrideTarget,omitempty"`
 
+	// Allowed boot source override targets - Redfish annotation for supported values
+	BootSourceOverrideTargetAllowableValues []string `json:"BootSourceOverrideTarget@Redfish.AllowableValues,omitempty"`
+
 	Certificates OdataV4IdRef `json:"Certificates,omitempty"`
 
 	// The URI to boot from when BootSourceOverrideTarget is set to `UefiHttp`.

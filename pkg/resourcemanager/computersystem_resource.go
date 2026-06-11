@@ -14,13 +14,14 @@ type ComputerSystemInterface interface {
 	GetPowerState() server.ResourcePowerState
 	SetPowerState(powerState server.ResourcePowerState)
 	SetBootOverride(server.ComputerSystemBootSource)
+	SetBootMode(bootMode server.ComputerSystemV1220BootSourceOverrideMode)
 }
 
 type ComputerSystemAdapter struct {
 	computerSystem *server.ComputerSystemV1220ComputerSystem
 }
 
-func NewComputerSystem(id, name string, powerState server.ResourcePowerState) *ComputerSystemAdapter {
+func NewComputerSystem(id, name string, powerState server.ResourcePowerState, bootMode server.ComputerSystemV1220BootSourceOverrideMode) *ComputerSystemAdapter {
 	generatedComputerSystem := &server.ComputerSystemV1220ComputerSystem{
 		OdataContext: "/redfish/v1/$metadata#ComputerSystem.ComputerSystem",
 		OdataId:      fmt.Sprintf("/redfish/v1/Systems/%s", id),
@@ -44,12 +45,20 @@ func NewComputerSystem(id, name string, powerState server.ResourcePowerState) *C
 			ComputerSystemReset: server.ComputerSystemV1220Reset{
 				Target: fmt.Sprintf("/redfish/v1/Systems/%s/Actions/ComputerSystem.Reset", id),
 				Title:  "Reset",
+				ResetTypeAllowableValues: []string{
+					"On",
+					"ForceOff",
+					"GracefulShutdown",
+					"ForceRestart",
+					"GracefulRestart",
+				},
 			},
 		},
 		Boot: server.ComputerSystemV1220Boot{
-			BootSourceOverrideEnabled: server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEENABLED_DISABLED,
-			BootSourceOverrideMode:    server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEMODE_LEGACY,
-			BootSourceOverrideTarget:  server.COMPUTERSYSTEMBOOTSOURCE_HDD,
+			BootSourceOverrideEnabled:               server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEENABLED_DISABLED,
+			BootSourceOverrideMode:                  bootMode,
+			BootSourceOverrideTarget:                server.COMPUTERSYSTEMBOOTSOURCE_HDD,
+			BootSourceOverrideTargetAllowableValues: []string{"Pxe", "Hdd"},
 		},
 		OperatingSystem: fmt.Sprintf("/redfish/v1/Systems/%s/OperatingSystem", id),
 		VirtualMedia: server.OdataV4IdRef{
@@ -115,4 +124,8 @@ func (a *ComputerSystemAdapter) SetPowerState(powerState server.ResourcePowerSta
 func (a *ComputerSystemAdapter) SetBootOverride(target server.ComputerSystemBootSource) {
 	a.computerSystem.Boot.BootSourceOverrideEnabled = server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEENABLED_CONTINUOUS
 	a.computerSystem.Boot.BootSourceOverrideTarget = target
+}
+
+func (a *ComputerSystemAdapter) SetBootMode(bootMode server.ComputerSystemV1220BootSourceOverrideMode) {
+	a.computerSystem.Boot.BootSourceOverrideMode = bootMode
 }

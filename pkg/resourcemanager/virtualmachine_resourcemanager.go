@@ -71,11 +71,15 @@ func (m *VirtualMachineResourceManager) Initialize(namespace, name string) error
 	m.namespace = vm.Namespace
 	m.name = vm.Name
 
+	// Detect boot mode from VM firmware configuration
+	bootMode := m.detectBootMode(vm)
+
 	// Initialize computer system
 	m.computerSystem = NewComputerSystem(
 		defaultComputerSystemId,
 		strings.Join([]string{vm.Namespace, vm.Name}, "/"),
 		powerStateMap[vm.Status.Ready],
+		bootMode,
 	)
 
 	// Initialize manager
@@ -117,6 +121,10 @@ func (m *VirtualMachineResourceManager) GetComputerSystem() (ComputerSystemInter
 	case false:
 		m.computerSystem.SetPowerState(server.RESOURCEPOWERSTATE_OFF)
 	}
+
+	// Update boot mode based on current VM firmware configuration
+	bootMode := m.detectBootMode(vm)
+	m.computerSystem.SetBootMode(bootMode)
 
 	return m.computerSystem, nil
 }
@@ -290,6 +298,17 @@ func (m *VirtualMachineResourceManager) PowerCycle() error {
 		Restart(m.ctx, m.name, &kubevirtv1.RestartOptions{})
 }
 
+func (m *VirtualMachineResourceManager) detectBootMode(vm *kubevirtv1.VirtualMachine) server.ComputerSystemV1220BootSourceOverrideMode {
+	// Check if VM has EFI firmware configured
+	if vm.Spec.Template != nil &&
+		vm.Spec.Template.Spec.Domain.Firmware != nil &&
+		vm.Spec.Template.Spec.Domain.Firmware.Bootloader != nil &&
+		vm.Spec.Template.Spec.Domain.Firmware.Bootloader.EFI != nil {
+		return server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEMODE_UEFI
+	}
+	return server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEMODE_LEGACY
+}
+
 func (m *VirtualMachineResourceManager) SetBootDevice(bootDevice BootDevice) error {
 	logrus.Info("SetBootDevice")
 	vm, err := m.virtClient.KubevirtV1().VirtualMachines(m.namespace).
@@ -324,7 +343,6 @@ func (m *VirtualMachineResourceManager) SetBootDevice(bootDevice BootDevice) err
 			return fmt.Errorf("no disks found")
 		}
 		vm.Spec.Template.Spec.Domain.Devices.Disks[0].BootOrder = &firstOrder
-		logrus.Infof("To be updated vm: %+v", vm.Spec.Template.Spec.Domain.Devices.Disks[0])
 	case BootDeviceCd:
 		cdromDisk, err := util.GetCdromDisk(vm.Spec.Template.Spec.Domain.Devices.Disks)
 		if err != nil {
@@ -333,7 +351,6 @@ func (m *VirtualMachineResourceManager) SetBootDevice(bootDevice BootDevice) err
 		for i, disk := range vm.Spec.Template.Spec.Domain.Devices.Disks {
 			if disk.Name == cdromDisk.Name {
 				vm.Spec.Template.Spec.Domain.Devices.Disks[i].BootOrder = &firstOrder
-				logrus.Infof("To be updated vm: %+v", vm.Spec.Template.Spec.Domain.Devices.Disks[i])
 				break
 			}
 		}

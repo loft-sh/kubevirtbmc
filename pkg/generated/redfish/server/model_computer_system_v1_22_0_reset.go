@@ -18,6 +18,9 @@ type ComputerSystemV1220Reset struct {
 
 	// Friendly action name
 	Title string `json:"title,omitempty"`
+
+	// Allowed reset types - Redfish annotation for supported values
+	ResetTypeAllowableValues []string `json:"ResetType@Redfish.AllowableValues,omitempty"`
 }
 
 // AssertComputerSystemV1220ResetRequired checks if the required fields are not zero-ed

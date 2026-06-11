@@ -256,3 +256,45 @@ func (h *handler) ComputerSystemSetDefaultBootOrder(bootDevices []string) error 
 	}
 	return h.rm.SetBootDevice(bootDevice)
 }
+
+func (h *handler) GetEthernetInterfaceCollection() (*server.EthernetInterfaceCollectionEthernetInterfaceCollection, error) {
+	interfaces, err := h.rm.GetEthernetInterfaces()
+	if err != nil {
+		return nil, err
+	}
+
+	members := make([]server.OdataV4IdRef, 0, len(interfaces))
+	for _, iface := range interfaces {
+		members = append(members, server.OdataV4IdRef{
+			OdataId: iface.OdataId(),
+		})
+	}
+
+	return &server.EthernetInterfaceCollectionEthernetInterfaceCollection{
+		OdataContext:      "/redfish/v1/$metadata#EthernetInterfaceCollection.EthernetInterfaceCollection",
+		OdataId:           "/redfish/v1/Systems/1/EthernetInterfaces",
+		OdataType:         "#EthernetInterfaceCollection.EthernetInterfaceCollection",
+		Name:              "Ethernet Interface Collection",
+		Members:           members,
+		MembersodataCount: int64(len(members)),
+	}, nil
+}
+
+func (h *handler) GetEthernetInterface(interfaceId string) (*server.EthernetInterfaceV1120EthernetInterface, error) {
+	interfaces, err := h.rm.GetEthernetInterfaces()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, iface := range interfaces {
+		if iface.Id() == interfaceId {
+			adapter, ok := iface.(*resourcemanager.EthernetInterfaceAdapter)
+			if !ok {
+				return nil, fmt.Errorf("ethernetInterface is not a *resourcemanager.EthernetInterfaceAdapter (got %T)", iface)
+			}
+			return adapter.EthernetInterface(), nil
+		}
+	}
+
+	return nil, fmt.Errorf("ethernet interface not found: %s", interfaceId)
+}

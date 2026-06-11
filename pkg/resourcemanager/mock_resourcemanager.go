@@ -68,6 +68,21 @@ func (mr *MockResourceManagerMockRecorder) GetComputerSystem() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetComputerSystem", reflect.TypeOf((*MockResourceManager)(nil).GetComputerSystem))
 }
 
+// GetEthernetInterfaces mocks base method.
+func (m *MockResourceManager) GetEthernetInterfaces() ([]EthernetInterfaceInterface, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetEthernetInterfaces")
+	ret0, _ := ret[0].([]EthernetInterfaceInterface)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetEthernetInterfaces indicates an expected call of GetEthernetInterfaces.
+func (mr *MockResourceManagerMockRecorder) GetEthernetInterfaces() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetEthernetInterfaces", reflect.TypeOf((*MockResourceManager)(nil).GetEthernetInterfaces))
+}
+
 // GetManager mocks base method.
 func (m *MockResourceManager) GetManager() (ManagerInterface, error) {
 	m.ctrl.T.Helper()

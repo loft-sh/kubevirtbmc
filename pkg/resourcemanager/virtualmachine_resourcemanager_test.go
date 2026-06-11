@@ -956,3 +956,117 @@ func TestVirtualMachineResourceManager_SetBootDevice(t *testing.T) {
 		})
 	}
 }
+
+func TestVirtualMachineResourceManager_GetEthernetInterfaces(t *testing.T) {
+	testCases := []struct {
+		name        string
+		vm          *kubevirtv1.VirtualMachine
+		expected    int
+		shouldError bool
+	}{
+		{
+			name: "VM with single interface returns one EthernetInterface",
+			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+				WithInterface("eth0", nil).
+				WithMACAddress("eth0", "52:54:00:12:34:56").
+				Ready(true).Build(),
+			expected:    1,
+			shouldError: false,
+		},
+		{
+			name: "VM with multiple interfaces returns array of all interfaces",
+			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+				WithInterface("eth0", nil).
+				WithMACAddress("eth0", "52:54:00:12:34:56").
+				WithInterface("eth1", nil).
+				WithMACAddress("eth1", "52:54:00:12:34:57").
+				Ready(true).Build(),
+			expected:    2,
+			shouldError: false,
+		},
+		{
+			name: "VM with interface without MAC address skips that interface",
+			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+				WithInterface("eth0", nil).
+				WithMACAddress("eth0", "52:54:00:12:34:56").
+				WithInterface("eth1", nil).
+				Ready(true).Build(),
+			expected:    1,
+			shouldError: false,
+		},
+		{
+			name: "VM with no interfaces returns empty array",
+			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+				Ready(true).Build(),
+			expected:    0,
+			shouldError: false,
+		},
+		{
+			name: "VM in running state has InterfaceEnabled=true and LinkStatus=LinkUp",
+			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+				WithInterface("eth0", nil).
+				WithMACAddress("eth0", "52:54:00:12:34:56").
+				Ready(true).Build(),
+			expected:    1,
+			shouldError: false,
+		},
+		{
+			name: "VM in stopped state has InterfaceEnabled=false and LinkStatus=LinkDown",
+			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+				WithInterface("eth0", nil).
+				WithMACAddress("eth0", "52:54:00:12:34:56").
+				Ready(false).Build(),
+			expected:    1,
+			shouldError: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			fakeVirtClient := kubevirtfake.NewSimpleClientset(tc.vm)
+
+			vmrm := &VirtualMachineResourceManager{
+				ctx:        context.TODO(),
+				virtClient: fakeVirtClient,
+				namespace:  testNamespace,
+				name:       testVMName,
+			}
+
+			interfaces, err := vmrm.GetEthernetInterfaces()
+			if tc.shouldError {
+				require.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+			require.Len(t, interfaces, tc.expected)
+
+			for i, iface := range interfaces {
+				adapter, ok := iface.(*EthernetInterfaceAdapter)
+				require.True(t, ok)
+
+				eth := adapter.EthernetInterface()
+				require.NotNil(t, eth)
+				require.NotEmpty(t, eth.Id)
+				require.NotEmpty(t, eth.Name)
+				require.NotEmpty(t, eth.MACAddress)
+				require.NotNil(t, eth.InterfaceEnabled)
+
+				if tc.vm.Status.Ready {
+					require.True(t, *eth.InterfaceEnabled)
+					require.Equal(t, "LinkUp", string(eth.LinkStatus))
+				} else {
+					require.False(t, *eth.InterfaceEnabled)
+					require.Equal(t, "LinkDown", string(eth.LinkStatus))
+				}
+
+				expectedOdataId := "/redfish/v1/Systems/1/EthernetInterfaces/" + eth.Id
+				require.Equal(t, expectedOdataId, eth.OdataId)
+				require.Equal(t, "#EthernetInterface.v1_12_0.EthernetInterface", eth.OdataType)
+
+				t.Logf("Interface %d: Id=%s, Name=%s, MAC=%s, Enabled=%v, LinkStatus=%s",
+					i, eth.Id, eth.Name, eth.MACAddress, *eth.InterfaceEnabled, eth.LinkStatus)
+			}
+		})
+	}
+}

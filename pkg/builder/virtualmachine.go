@@ -112,6 +112,21 @@ func (b *VirtualMachineBuilder) Ready(ready bool) *VirtualMachineBuilder {
 	return b
 }
 
+func (b *VirtualMachineBuilder) WithMACAddress(interfaceName, macAddress string) *VirtualMachineBuilder {
+	if b.vm.Spec.Template == nil {
+		return b
+	}
+
+	for i := range b.vm.Spec.Template.Spec.Domain.Devices.Interfaces {
+		if b.vm.Spec.Template.Spec.Domain.Devices.Interfaces[i].Name == interfaceName {
+			b.vm.Spec.Template.Spec.Domain.Devices.Interfaces[i].MacAddress = macAddress
+			break
+		}
+	}
+
+	return b
+}
+
 // VirtualMachineInstanceBuilder builds a VirtualMachineInstance object.
 type VirtualMachineInstanceBuilder struct {
 	vmi *kubevirtv1.VirtualMachineInstance

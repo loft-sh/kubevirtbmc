@@ -12,6 +12,7 @@ type ResourceManager interface {
 	GetComputerSystem() (ComputerSystemInterface, error)
 	GetManager() (ManagerInterface, error)
 	GetVirtualMedia() (VirtualMediaInterface, error)
+	GetEthernetInterfaces() ([]EthernetInterfaceInterface, error)
 
 	EjectMedia() error
 	InsertMedia(string) error

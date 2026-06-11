@@ -309,6 +309,49 @@ func (m *VirtualMachineResourceManager) detectBootMode(vm *kubevirtv1.VirtualMac
 	return server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEMODE_LEGACY
 }
 
+func (m *VirtualMachineResourceManager) GetEthernetInterfaces() ([]EthernetInterfaceInterface, error) {
+	vm, err := m.virtClient.KubevirtV1().VirtualMachines(m.namespace).Get(m.ctx, m.name, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get ethernet interfaces: %w", err)
+	}
+
+	if vm.Spec.Template == nil {
+		return []EthernetInterfaceInterface{}, nil
+	}
+
+	interfaces := vm.Spec.Template.Spec.Domain.Devices.Interfaces
+	if len(interfaces) == 0 {
+		return []EthernetInterfaceInterface{}, nil
+	}
+
+	running := vm.Status.Ready
+	var linkStatus server.EthernetInterfaceV1120LinkStatus
+	if running {
+		linkStatus = server.ETHERNETINTERFACEV1120LINKSTATUS_LINK_UP
+	} else {
+		linkStatus = server.ETHERNETINTERFACEV1120LINKSTATUS_LINK_DOWN
+	}
+
+	result := make([]EthernetInterfaceInterface, 0, len(interfaces))
+	for _, iface := range interfaces {
+		if iface.MacAddress == "" {
+			logrus.WithField("interface", iface.Name).Warn("Skipping interface without MAC address")
+			continue
+		}
+
+		ethernetIface := NewEthernetInterface(
+			iface.Name,
+			iface.Name,
+			iface.MacAddress,
+			running,
+			linkStatus,
+		)
+		result = append(result, ethernetIface)
+	}
+
+	return result, nil
+}
+
 func (m *VirtualMachineResourceManager) SetBootDevice(bootDevice BootDevice) error {
 	logrus.Info("SetBootDevice")
 	vm, err := m.virtClient.KubevirtV1().VirtualMachines(m.namespace).

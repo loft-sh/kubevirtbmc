@@ -60444,16 +60444,11 @@ func (s *APIService) RedfishV1SystemsComputerSystemIdCertificatesCertificateIdAc
 
 // RedfishV1SystemsComputerSystemIdEthernetInterfacesGet -
 func (s *APIService) RedfishV1SystemsComputerSystemIdEthernetInterfacesGet(ctx context.Context, computerSystemId string) (server.ImplResponse, error) {
-	// TODO - update RedfishV1SystemsComputerSystemIdEthernetInterfacesGet with the required logic for this service method.
-	// Add api_default_service.go to the .openapi-generator-ignore to avoid overwriting this service implementation when updating open api generation.
-
-	// TODO: Uncomment the next line to return response Response(200, EthernetInterfaceCollectionEthernetInterfaceCollection{}) or use other options such as http.Ok ...
-	// return Response(200, EthernetInterfaceCollectionEthernetInterfaceCollection{}), nil
-
-	// TODO: Uncomment the next line to return response Response(0, RedfishError{}) or use other options such as http.Ok ...
-	// return Response(0, RedfishError{}), nil
-
-	return server.Response(http.StatusNotImplemented, nil), errors.New("RedfishV1SystemsComputerSystemIdEthernetInterfacesGet method not implemented")
+	collection, err := s.handler.GetEthernetInterfaceCollection()
+	if err != nil {
+		return server.Response(http.StatusInternalServerError, nil), err
+	}
+	return server.Response(200, collection), nil
 }
 
 // RedfishV1SystemsComputerSystemIdEthernetInterfacesPost -
@@ -60478,16 +60473,11 @@ func (s *APIService) RedfishV1SystemsComputerSystemIdEthernetInterfacesPost(ctx 
 
 // RedfishV1SystemsComputerSystemIdEthernetInterfacesEthernetInterfaceIdGet -
 func (s *APIService) RedfishV1SystemsComputerSystemIdEthernetInterfacesEthernetInterfaceIdGet(ctx context.Context, computerSystemId string, ethernetInterfaceId string) (server.ImplResponse, error) {
-	// TODO - update RedfishV1SystemsComputerSystemIdEthernetInterfacesEthernetInterfaceIdGet with the required logic for this service method.
-	// Add api_default_service.go to the .openapi-generator-ignore to avoid overwriting this service implementation when updating open api generation.
-
-	// TODO: Uncomment the next line to return response Response(200, EthernetInterfaceV1120EthernetInterface{}) or use other options such as http.Ok ...
-	// return Response(200, EthernetInterfaceV1120EthernetInterface{}), nil
-
-	// TODO: Uncomment the next line to return response Response(0, RedfishError{}) or use other options such as http.Ok ...
-	// return Response(0, RedfishError{}), nil
-
-	return server.Response(http.StatusNotImplemented, nil), errors.New("RedfishV1SystemsComputerSystemIdEthernetInterfacesEthernetInterfaceIdGet method not implemented")
+	iface, err := s.handler.GetEthernetInterface(ethernetInterfaceId)
+	if err != nil {
+		return server.Response(http.StatusNotFound, nil), err
+	}
+	return server.Response(200, iface), nil
 }
 
 // RedfishV1SystemsComputerSystemIdEthernetInterfacesEthernetInterfaceIdPut -

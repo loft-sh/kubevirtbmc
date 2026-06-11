@@ -21,7 +21,7 @@ type ComputerSystemAdapter struct {
 	computerSystem *server.ComputerSystemV1220ComputerSystem
 }
 
-func NewComputerSystem(id, name string, powerState server.ResourcePowerState, bootMode server.ComputerSystemV1220BootSourceOverrideMode) *ComputerSystemAdapter {
+func NewComputerSystem(id, name, uid string, powerState server.ResourcePowerState, bootMode server.ComputerSystemV1220BootSourceOverrideMode) *ComputerSystemAdapter {
 	generatedComputerSystem := &server.ComputerSystemV1220ComputerSystem{
 		OdataContext: "/redfish/v1/$metadata#ComputerSystem.ComputerSystem",
 		OdataId:      fmt.Sprintf("/redfish/v1/Systems/%s", id),
@@ -35,7 +35,7 @@ func NewComputerSystem(id, name string, powerState server.ResourcePowerState, bo
 		Manufacturer: util.Ptr("KubeVirt"),
 		Model:        util.Ptr("KubeVirt"),
 		PartNumber:   util.Ptr(""),
-		SerialNumber: util.Ptr("000000000000"),
+		SerialNumber: util.Ptr(uid),
 		SKU:          util.Ptr(""),
 		Status:       server.ResourceStatus{},
 		SystemType:   server.COMPUTERSYSTEMV1220SYSTEMTYPE_VIRTUAL,

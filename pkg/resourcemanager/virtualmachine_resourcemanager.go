@@ -74,7 +74,7 @@ func (m *VirtualMachineResourceManager) Initialize(namespace, name string) error
 	// Detect boot mode from VM firmware configuration
 	bootMode := m.detectBootMode(vm)
 
-	// Strip dashes from the UUID to fit the 32-char serial limit imposed by some databases (NICo)
+	// Strip dashes from the UUID to fit the 32-char serial limit imposed by some BMC databases
 	serial := strings.ReplaceAll(string(vm.UID), "-", "")
 
 	// Initialize computer system

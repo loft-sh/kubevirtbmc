@@ -64,6 +64,7 @@ func (h *handler) GetServiceRoot() *server.ServiceRootV1161ServiceRoot {
 		Description:    "ServiceRoot",
 		Name:           "ServiceRoot",
 		RedfishVersion: "1.16.1",
+		Vendor:         util.Ptr("KubeVirt"),
 		UUID:           util.Ptr("00000000-0000-0000-0000-000000000000"),
 		Chassis: server.OdataV4IdRef{
 			OdataId: "/redfish/v1/Chassis",

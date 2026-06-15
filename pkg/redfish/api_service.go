@@ -34,7 +34,7 @@ func NewAPIService(bmcUser string, bmcPassword string, resourceManager resourcem
 
 // RedfishV1Get -
 func (s *APIService) RedfishV1Get(ctx context.Context) (server.ImplResponse, error) {
-	return server.Response(200, s.handler.GetServiceRoot()), nil
+	return server.Response(200, sanitize(s.handler.GetServiceRoot())), nil
 }
 
 // RedfishV1MetadataGet -
@@ -30455,7 +30455,7 @@ func (s *APIService) RedfishV1LicenseServiceLicensesLicenseIdDelete(ctx context.
 
 // RedfishV1ManagersGet -
 func (s *APIService) RedfishV1ManagersGet(ctx context.Context) (server.ImplResponse, error) {
-	return server.Response(200, s.handler.GetManagerCollection()), nil
+	return server.Response(200, sanitize(s.handler.GetManagerCollection())), nil
 }
 
 // RedfishV1ManagersManagerIdGet -
@@ -30465,7 +30465,7 @@ func (s *APIService) RedfishV1ManagersManagerIdGet(ctx context.Context, managerI
 		return server.Response(http.StatusInternalServerError, nil), err
 	}
 
-	return server.Response(200, manager), nil
+	return server.Response(200, sanitize(manager)), nil
 }
 
 // RedfishV1ManagersManagerIdPut -
@@ -34502,7 +34502,7 @@ func (s *APIService) RedfishV1ManagersManagerIdUSBPortsPortIdMetricsGet(ctx cont
 // RedfishV1ManagersManagerIdVirtualMediaGet -
 // Deprecated
 func (s *APIService) RedfishV1ManagersManagerIdVirtualMediaGet(ctx context.Context, managerId string) (server.ImplResponse, error) {
-	return server.Response(200, s.handler.GetVirtualMediaCollection()), nil
+	return server.Response(200, sanitize(s.handler.GetVirtualMediaCollection())), nil
 }
 
 // RedfishV1ManagersManagerIdVirtualMediaVirtualMediaIdGet -
@@ -34513,7 +34513,7 @@ func (s *APIService) RedfishV1ManagersManagerIdVirtualMediaVirtualMediaIdGet(ctx
 		return server.Response(http.StatusInternalServerError, nil), err
 	}
 
-	return server.Response(200, virtualMedia), nil
+	return server.Response(200, sanitize(virtualMedia)), nil
 }
 
 // RedfishV1ManagersManagerIdVirtualMediaVirtualMediaIdPut -
@@ -59685,7 +59685,7 @@ func (s *APIService) RedfishV1StorageServicesStorageServiceIdVolumesVolumeIdCapa
 
 // RedfishV1SystemsGet -
 func (s *APIService) RedfishV1SystemsGet(ctx context.Context) (server.ImplResponse, error) {
-	return server.Response(200, s.handler.GetComputerSystemCollection()), nil
+	return server.Response(200, sanitize(s.handler.GetComputerSystemCollection())), nil
 }
 
 // RedfishV1SystemsPost -
@@ -59715,7 +59715,7 @@ func (s *APIService) RedfishV1SystemsComputerSystemIdGet(ctx context.Context, co
 		return server.Response(http.StatusInternalServerError, nil), err
 	}
 
-	return server.Response(200, computerSystem), nil
+	return server.Response(200, sanitize(computerSystem)), nil
 }
 
 // RedfishV1SystemsComputerSystemIdPut -
@@ -60448,7 +60448,7 @@ func (s *APIService) RedfishV1SystemsComputerSystemIdEthernetInterfacesGet(ctx c
 	if err != nil {
 		return server.Response(http.StatusInternalServerError, nil), err
 	}
-	return server.Response(200, collection), nil
+	return server.Response(200, sanitize(collection)), nil
 }
 
 // RedfishV1SystemsComputerSystemIdEthernetInterfacesPost -
@@ -60477,7 +60477,7 @@ func (s *APIService) RedfishV1SystemsComputerSystemIdEthernetInterfacesEthernetI
 	if err != nil {
 		return server.Response(http.StatusNotFound, nil), err
 	}
-	return server.Response(200, iface), nil
+	return server.Response(200, sanitize(iface)), nil
 }
 
 // RedfishV1SystemsComputerSystemIdEthernetInterfacesEthernetInterfaceIdPut -

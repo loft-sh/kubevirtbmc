@@ -43,4 +43,5 @@ func TestOEMRouteReachableThroughRealRouter(t *testing.T) {
 	assert.Equal(t, http.StatusOK, rec.Code, "OEM route must reach the handler, body=%q", rec.Body.String())
 	assert.Contains(t, rec.Body.String(), "BaseMAC")
 	assert.Contains(t, rec.Body.String(), "Mode")
+	assert.Contains(t, rec.Body.String(), "#NvidiaComputerSystem.v1_0_0.NvidiaComputerSystem")
 }

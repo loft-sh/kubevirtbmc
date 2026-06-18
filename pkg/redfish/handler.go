@@ -612,10 +612,14 @@ func (h *handler) HandleSystemOEM(w http.ResponseWriter, r *http.Request) {
 		mode = "NicMode"
 	}
 
+	// Mirror nico's reference mock (bmc-mock NvidiaComputerSystem) field-for-field,
+	// including @odata.type. (The deserializer reads into a generic map and does not
+	// require @odata.type, but matching the reference avoids any client that does.)
 	body := map[string]interface{}{
-		"@odata.id": fmt.Sprintf("/redfish/v1/Systems/%s/Oem/Nvidia", bluefieldComputerSystemId),
-		"Mode":      mode,
-		"BaseMAC":   strings.ReplaceAll(baseMAC, ":", ""),
+		"@odata.id":   fmt.Sprintf("/redfish/v1/Systems/%s/Oem/Nvidia", bluefieldComputerSystemId),
+		"@odata.type": "#NvidiaComputerSystem.v1_0_0.NvidiaComputerSystem",
+		"Mode":        mode,
+		"BaseMAC":     strings.ReplaceAll(baseMAC, ":", ""),
 	}
 
 	w.Header().Set("Content-Type", "application/json")

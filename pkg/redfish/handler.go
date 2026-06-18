@@ -60,6 +60,27 @@ func (h *handler) DeleteSession(sessionID string) {
 }
 
 func (h *handler) GetServiceRoot() *server.ServiceRootV1161ServiceRoot {
+	// Report a known server vendor rather than "KubeVirt". NVIDIA's libredfish
+	// client (used by NICo) treats an unrecognized vendor as "Unknown" and then
+	// builds the exploration client without running its init path, so it never
+	// discovers the system/manager ids and fails. A recognized vendor takes the
+	// full-init path.
+	//
+	// A DPU must report "NVIDIA": libredfish selects its client by vendor, and
+	// only the NVIDIA (BlueField) client reads NIC mode and base MAC from
+	// Systems/<id>/Oem/Nvidia. Under any other vendor those calls hit the
+	// standard stubs (NotSupported / None), so nico can't determine NIC mode or
+	// base MAC. Both the NVIDIA and HPE clients delegate the remaining
+	// exploration reads to the standard Redfish paths this emulator implements.
+	//
+	// A host (non-DPU) reports "HPE": it has no OEM resource, and the HPE client
+	// reads PCIe devices via Chassis/<id>/PCIeDevices, which is how the host
+	// surfaces its attached DPU's serial.
+	vendor := "HPE"
+	if h.rm.IsDPU() {
+		vendor = "NVIDIA"
+	}
+
 	return &server.ServiceRootV1161ServiceRoot{
 		OdataContext:   "/redfish/v1/$metadata#ServiceRoot.ServiceRoot",
 		OdataId:        "/redfish/v1",
@@ -67,17 +88,8 @@ func (h *handler) GetServiceRoot() *server.ServiceRootV1161ServiceRoot {
 		Description:    "ServiceRoot",
 		Name:           "ServiceRoot",
 		RedfishVersion: "1.16.1",
-		// Report a known server vendor rather than "KubeVirt". NVIDIA's
-		// libredfish client (used by NICo) treats an unrecognized vendor as
-		// "Unknown" and then builds the exploration client without running its
-		// init path, so it never discovers the system/manager ids and requests
-		// Managers/ (empty id), failing with "missing field Id". A recognized
-		// vendor takes the full-init path that discovers those ids. HPE is the
-		// safest impersonation: its libredfish client delegates the exploration
-		// reads to the standard Redfish paths this emulator implements, unlike
-		// Dell/Lenovo which read vendor-specific BIOS attributes and error out.
-		Vendor: util.Ptr("HPE"),
-		UUID:   util.Ptr("00000000-0000-0000-0000-000000000000"),
+		Vendor:         util.Ptr(vendor),
+		UUID:           util.Ptr("00000000-0000-0000-0000-000000000000"),
 		Chassis: server.OdataV4IdRef{
 			OdataId: "/redfish/v1/Chassis",
 		},

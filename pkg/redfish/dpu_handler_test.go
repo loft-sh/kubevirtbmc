@@ -13,6 +13,22 @@ import (
 	"kubevirt.io/kubevirtbmc/pkg/resourcemanager"
 )
 
+func TestServiceRootVendor(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockRM := resourcemanager.NewMockResourceManager(ctrl)
+	h := NewHandler(testUsername, testPassword, mockRM)
+
+	// A DPU must report NVIDIA so libredfish selects the BlueField client that
+	// reads NIC mode and base MAC from the OEM resource. A host reports HPE.
+	mockRM.EXPECT().IsDPU().Return(true)
+	assert.Equal(t, "NVIDIA", *h.GetServiceRoot().Vendor)
+
+	mockRM.EXPECT().IsDPU().Return(false)
+	assert.Equal(t, "HPE", *h.GetServiceRoot().Vendor)
+}
+
 func TestGetChassisCollectionDPU(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()

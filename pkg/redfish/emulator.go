@@ -26,7 +26,16 @@ type Emulator struct {
 func NewEmulator(ctx context.Context, port int, bmcUser string, bmcPassword string, resourceManager resourcemanager.ResourceManager) *Emulator {
 	apiService := NewAPIService(bmcUser, bmcPassword, resourceManager)
 	apiController := server.NewDefaultAPIController(apiService)
-	router := server.NewRouter(session.AuthMiddleware(bmcUser, bmcPassword), apiController)
+	authMiddleware := session.AuthMiddleware(bmcUser, bmcPassword)
+	router := server.NewRouter(authMiddleware, apiController)
+
+	// The NVIDIA OEM resource carrying the DPU NIC mode and base MAC has no route
+	// in the generated Redfish router, so register it directly. It is wrapped in
+	// the same auth middleware as the generated protected routes.
+	router.
+		Methods(http.MethodGet).
+		Path("/redfish/v1/Systems/{ComputerSystemId}/Oem/Nvidia").
+		Handler(authMiddleware(http.HandlerFunc(apiService.handler.HandleSystemOEM)))
 
 	return &Emulator{
 		ctx:         ctx,

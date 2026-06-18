@@ -21,4 +21,11 @@ type ResourceManager interface {
 	PowerOff() error
 	PowerCycle() error
 	SetBootDevice(BootDevice) error
+
+	// Mocked DPU/host identity sourced from VM annotations.
+	IsDPU() bool
+	DPUCard() (model string)
+	SystemOEM() (nicMode, baseMAC string)
+	AttachedDPUSerial() (serial string, ok bool)
+	BMCFirmwareVersion() (version string, ok bool)
 }

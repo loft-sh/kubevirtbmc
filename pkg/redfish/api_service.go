@@ -2802,16 +2802,7 @@ func (s *APIService) RedfishV1CertificateServiceCertificateLocationsGet(ctx cont
 
 // RedfishV1ChassisGet -
 func (s *APIService) RedfishV1ChassisGet(ctx context.Context) (server.ImplResponse, error) {
-	// TODO - update RedfishV1ChassisGet with the required logic for this service method.
-	// Add api_default_service.go to the .openapi-generator-ignore to avoid overwriting this service implementation when updating open api generation.
-
-	// TODO: Uncomment the next line to return response Response(200, ChassisCollectionChassisCollection{}) or use other options such as http.Ok ...
-	// return Response(200, ChassisCollectionChassisCollection{}), nil
-
-	// TODO: Uncomment the next line to return response Response(0, RedfishError{}) or use other options such as http.Ok ...
-	// return Response(0, RedfishError{}), nil
-
-	return server.Response(http.StatusNotImplemented, nil), errors.New("RedfishV1ChassisGet method not implemented")
+	return server.Response(200, sanitize(s.handler.GetChassisCollection())), nil
 }
 
 // RedfishV1ChassisPost -
@@ -2836,16 +2827,7 @@ func (s *APIService) RedfishV1ChassisPost(ctx context.Context, chassisV1250Chass
 
 // RedfishV1ChassisChassisIdGet -
 func (s *APIService) RedfishV1ChassisChassisIdGet(ctx context.Context, chassisId string) (server.ImplResponse, error) {
-	// TODO - update RedfishV1ChassisChassisIdGet with the required logic for this service method.
-	// Add api_default_service.go to the .openapi-generator-ignore to avoid overwriting this service implementation when updating open api generation.
-
-	// TODO: Uncomment the next line to return response Response(200, ChassisV1250Chassis{}) or use other options such as http.Ok ...
-	// return Response(200, ChassisV1250Chassis{}), nil
-
-	// TODO: Uncomment the next line to return response Response(0, RedfishError{}) or use other options such as http.Ok ...
-	// return Response(0, RedfishError{}), nil
-
-	return server.Response(http.StatusNotImplemented, nil), errors.New("RedfishV1ChassisChassisIdGet method not implemented")
+	return server.Response(200, sanitize(s.handler.GetChassis(chassisId))), nil
 }
 
 // RedfishV1ChassisChassisIdPut -
@@ -9211,30 +9193,16 @@ func (s *APIService) RedfishV1ChassisChassisIdNetworkAdaptersNetworkAdapterIdPro
 
 // RedfishV1ChassisChassisIdPCIeDevicesGet -
 func (s *APIService) RedfishV1ChassisChassisIdPCIeDevicesGet(ctx context.Context, chassisId string) (server.ImplResponse, error) {
-	// TODO - update RedfishV1ChassisChassisIdPCIeDevicesGet with the required logic for this service method.
-	// Add api_default_service.go to the .openapi-generator-ignore to avoid overwriting this service implementation when updating open api generation.
-
-	// TODO: Uncomment the next line to return response Response(200, PcieDeviceCollectionPcieDeviceCollection{}) or use other options such as http.Ok ...
-	// return Response(200, PcieDeviceCollectionPcieDeviceCollection{}), nil
-
-	// TODO: Uncomment the next line to return response Response(0, RedfishError{}) or use other options such as http.Ok ...
-	// return Response(0, RedfishError{}), nil
-
-	return server.Response(http.StatusNotImplemented, nil), errors.New("RedfishV1ChassisChassisIdPCIeDevicesGet method not implemented")
+	return server.Response(200, sanitize(s.handler.GetPCIeDeviceCollection(chassisId))), nil
 }
 
 // RedfishV1ChassisChassisIdPCIeDevicesPCIeDeviceIdGet -
 func (s *APIService) RedfishV1ChassisChassisIdPCIeDevicesPCIeDeviceIdGet(ctx context.Context, chassisId string, pCIeDeviceId string) (server.ImplResponse, error) {
-	// TODO - update RedfishV1ChassisChassisIdPCIeDevicesPCIeDeviceIdGet with the required logic for this service method.
-	// Add api_default_service.go to the .openapi-generator-ignore to avoid overwriting this service implementation when updating open api generation.
-
-	// TODO: Uncomment the next line to return response Response(200, PcieDeviceV1130PcieDevice{}) or use other options such as http.Ok ...
-	// return Response(200, PcieDeviceV1130PcieDevice{}), nil
-
-	// TODO: Uncomment the next line to return response Response(0, RedfishError{}) or use other options such as http.Ok ...
-	// return Response(0, RedfishError{}), nil
-
-	return server.Response(http.StatusNotImplemented, nil), errors.New("RedfishV1ChassisChassisIdPCIeDevicesPCIeDeviceIdGet method not implemented")
+	device, err := s.handler.GetPCIeDevice(chassisId, pCIeDeviceId)
+	if err != nil {
+		return server.Response(http.StatusNotFound, nil), err
+	}
+	return server.Response(200, sanitize(device)), nil
 }
 
 // RedfishV1ChassisChassisIdPCIeDevicesPCIeDeviceIdPut -
@@ -30966,16 +30934,7 @@ func (s *APIService) RedfishV1ManagersManagerIdDedicatedNetworkPortsPortIdMetric
 
 // RedfishV1ManagersManagerIdEthernetInterfacesGet -
 func (s *APIService) RedfishV1ManagersManagerIdEthernetInterfacesGet(ctx context.Context, managerId string) (server.ImplResponse, error) {
-	// TODO - update RedfishV1ManagersManagerIdEthernetInterfacesGet with the required logic for this service method.
-	// Add api_default_service.go to the .openapi-generator-ignore to avoid overwriting this service implementation when updating open api generation.
-
-	// TODO: Uncomment the next line to return response Response(200, EthernetInterfaceCollectionEthernetInterfaceCollection{}) or use other options such as http.Ok ...
-	// return Response(200, EthernetInterfaceCollectionEthernetInterfaceCollection{}), nil
-
-	// TODO: Uncomment the next line to return response Response(0, RedfishError{}) or use other options such as http.Ok ...
-	// return Response(0, RedfishError{}), nil
-
-	return server.Response(http.StatusNotImplemented, nil), errors.New("RedfishV1ManagersManagerIdEthernetInterfacesGet method not implemented")
+	return server.Response(200, sanitize(s.handler.GetManagerEthernetInterfaceCollection(managerId))), nil
 }
 
 // RedfishV1ManagersManagerIdEthernetInterfacesPost -
@@ -71409,16 +71368,7 @@ func (s *APIService) RedfishV1SystemsSystemIdFabricAdaptersFabricAdapterIdRSPVCA
 
 // RedfishV1TaskServiceGet -
 func (s *APIService) RedfishV1TaskServiceGet(ctx context.Context) (server.ImplResponse, error) {
-	// TODO - update RedfishV1TaskServiceGet with the required logic for this service method.
-	// Add api_default_service.go to the .openapi-generator-ignore to avoid overwriting this service implementation when updating open api generation.
-
-	// TODO: Uncomment the next line to return response Response(200, TaskServiceV120TaskService{}) or use other options such as http.Ok ...
-	// return Response(200, TaskServiceV120TaskService{}), nil
-
-	// TODO: Uncomment the next line to return response Response(0, RedfishError{}) or use other options such as http.Ok ...
-	// return Response(0, RedfishError{}), nil
-
-	return server.Response(http.StatusNotImplemented, nil), errors.New("RedfishV1TaskServiceGet method not implemented")
+	return server.Response(200, sanitize(s.handler.GetTaskService())), nil
 }
 
 // RedfishV1TaskServicePut -
@@ -71463,30 +71413,12 @@ func (s *APIService) RedfishV1TaskServicePatch(ctx context.Context, taskServiceV
 
 // RedfishV1TaskServiceTasksGet -
 func (s *APIService) RedfishV1TaskServiceTasksGet(ctx context.Context) (server.ImplResponse, error) {
-	// TODO - update RedfishV1TaskServiceTasksGet with the required logic for this service method.
-	// Add api_default_service.go to the .openapi-generator-ignore to avoid overwriting this service implementation when updating open api generation.
-
-	// TODO: Uncomment the next line to return response Response(200, TaskCollectionTaskCollection{}) or use other options such as http.Ok ...
-	// return Response(200, TaskCollectionTaskCollection{}), nil
-
-	// TODO: Uncomment the next line to return response Response(0, RedfishError{}) or use other options such as http.Ok ...
-	// return Response(0, RedfishError{}), nil
-
-	return server.Response(http.StatusNotImplemented, nil), errors.New("RedfishV1TaskServiceTasksGet method not implemented")
+	return server.Response(200, sanitize(s.handler.GetTaskCollection())), nil
 }
 
 // RedfishV1TaskServiceTasksTaskIdGet -
 func (s *APIService) RedfishV1TaskServiceTasksTaskIdGet(ctx context.Context, taskId string) (server.ImplResponse, error) {
-	// TODO - update RedfishV1TaskServiceTasksTaskIdGet with the required logic for this service method.
-	// Add api_default_service.go to the .openapi-generator-ignore to avoid overwriting this service implementation when updating open api generation.
-
-	// TODO: Uncomment the next line to return response Response(200, TaskV173Task{}) or use other options such as http.Ok ...
-	// return Response(200, TaskV173Task{}), nil
-
-	// TODO: Uncomment the next line to return response Response(0, RedfishError{}) or use other options such as http.Ok ...
-	// return Response(0, RedfishError{}), nil
-
-	return server.Response(http.StatusNotImplemented, nil), errors.New("RedfishV1TaskServiceTasksTaskIdGet method not implemented")
+	return server.Response(200, sanitize(s.handler.GetTask(taskId))), nil
 }
 
 // RedfishV1TaskServiceTasksTaskIdDelete -
@@ -75556,16 +75488,7 @@ func (s *APIService) RedfishV1ThermalEquipmentImmersionUnitsCoolingUnitIdSeconda
 
 // RedfishV1UpdateServiceGet -
 func (s *APIService) RedfishV1UpdateServiceGet(ctx context.Context) (server.ImplResponse, error) {
-	// TODO - update RedfishV1UpdateServiceGet with the required logic for this service method.
-	// Add api_default_service.go to the .openapi-generator-ignore to avoid overwriting this service implementation when updating open api generation.
-
-	// TODO: Uncomment the next line to return response Response(200, UpdateServiceV1130UpdateService{}) or use other options such as http.Ok ...
-	// return Response(200, UpdateServiceV1130UpdateService{}), nil
-
-	// TODO: Uncomment the next line to return response Response(0, RedfishError{}) or use other options such as http.Ok ...
-	// return Response(0, RedfishError{}), nil
-
-	return server.Response(http.StatusNotImplemented, nil), errors.New("RedfishV1UpdateServiceGet method not implemented")
+	return server.Response(200, sanitize(s.handler.GetUpdateService())), nil
 }
 
 // RedfishV1UpdateServicePut -
@@ -75656,25 +75579,7 @@ func (s *APIService) RedfishV1UpdateServiceActionsUpdateServiceRemoveSSHIdentity
 
 // RedfishV1UpdateServiceActionsUpdateServiceSimpleUpdatePost -
 func (s *APIService) RedfishV1UpdateServiceActionsUpdateServiceSimpleUpdatePost(ctx context.Context, updateServiceV1130SimpleUpdateRequestBody server.UpdateServiceV1130SimpleUpdateRequestBody) (server.ImplResponse, error) {
-	// TODO - update RedfishV1UpdateServiceActionsUpdateServiceSimpleUpdatePost with the required logic for this service method.
-	// Add api_default_service.go to the .openapi-generator-ignore to avoid overwriting this service implementation when updating open api generation.
-
-	// TODO: Uncomment the next line to return response Response(200, RedfishError{}) or use other options such as http.Ok ...
-	// return Response(200, RedfishError{}), nil
-
-	// TODO: Uncomment the next line to return response Response(201, RedfishError{}) or use other options such as http.Ok ...
-	// return Response(201, RedfishError{}), nil
-
-	// TODO: Uncomment the next line to return response Response(202, TaskV173Task{}) or use other options such as http.Ok ...
-	// return Response(202, TaskV173Task{}), nil
-
-	// TODO: Uncomment the next line to return response Response(204, {}) or use other options such as http.Ok ...
-	// return Response(204, nil),nil
-
-	// TODO: Uncomment the next line to return response Response(0, RedfishError{}) or use other options such as http.Ok ...
-	// return Response(0, RedfishError{}), nil
-
-	return server.Response(http.StatusNotImplemented, nil), errors.New("RedfishV1UpdateServiceActionsUpdateServiceSimpleUpdatePost method not implemented")
+	return server.Response(202, sanitize(s.handler.SimpleUpdate())), nil
 }
 
 // RedfishV1UpdateServiceActionsUpdateServiceStartUpdatePost -
@@ -75856,30 +75761,16 @@ func (s *APIService) RedfishV1UpdateServiceClientCertificatesCertificateIdAction
 
 // RedfishV1UpdateServiceFirmwareInventoryGet -
 func (s *APIService) RedfishV1UpdateServiceFirmwareInventoryGet(ctx context.Context) (server.ImplResponse, error) {
-	// TODO - update RedfishV1UpdateServiceFirmwareInventoryGet with the required logic for this service method.
-	// Add api_default_service.go to the .openapi-generator-ignore to avoid overwriting this service implementation when updating open api generation.
-
-	// TODO: Uncomment the next line to return response Response(200, SoftwareInventoryCollectionSoftwareInventoryCollection{}) or use other options such as http.Ok ...
-	// return Response(200, SoftwareInventoryCollectionSoftwareInventoryCollection{}), nil
-
-	// TODO: Uncomment the next line to return response Response(0, RedfishError{}) or use other options such as http.Ok ...
-	// return Response(0, RedfishError{}), nil
-
-	return server.Response(http.StatusNotImplemented, nil), errors.New("RedfishV1UpdateServiceFirmwareInventoryGet method not implemented")
+	return server.Response(200, sanitize(s.handler.GetFirmwareInventoryCollection())), nil
 }
 
 // RedfishV1UpdateServiceFirmwareInventorySoftwareInventoryIdGet -
 func (s *APIService) RedfishV1UpdateServiceFirmwareInventorySoftwareInventoryIdGet(ctx context.Context, softwareInventoryId string) (server.ImplResponse, error) {
-	// TODO - update RedfishV1UpdateServiceFirmwareInventorySoftwareInventoryIdGet with the required logic for this service method.
-	// Add api_default_service.go to the .openapi-generator-ignore to avoid overwriting this service implementation when updating open api generation.
-
-	// TODO: Uncomment the next line to return response Response(200, SoftwareInventoryV1101SoftwareInventory{}) or use other options such as http.Ok ...
-	// return Response(200, SoftwareInventoryV1101SoftwareInventory{}), nil
-
-	// TODO: Uncomment the next line to return response Response(0, RedfishError{}) or use other options such as http.Ok ...
-	// return Response(0, RedfishError{}), nil
-
-	return server.Response(http.StatusNotImplemented, nil), errors.New("RedfishV1UpdateServiceFirmwareInventorySoftwareInventoryIdGet method not implemented")
+	inventory, err := s.handler.GetFirmwareInventory(softwareInventoryId)
+	if err != nil {
+		return server.Response(http.StatusNotFound, nil), err
+	}
+	return server.Response(200, sanitize(inventory)), nil
 }
 
 // RedfishV1UpdateServiceFirmwareInventorySoftwareInventoryIdPut -

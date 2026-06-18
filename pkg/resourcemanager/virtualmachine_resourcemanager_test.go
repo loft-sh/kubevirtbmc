@@ -1070,3 +1070,88 @@ func TestVirtualMachineResourceManager_GetEthernetInterfaces(t *testing.T) {
 		})
 	}
 }
+
+func TestInitializeAnnotations(t *testing.T) {
+	dpuVM := &kubevirtv1.VirtualMachine{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: testNamespace,
+			Name:      testVMName,
+			UID:       "abc-123",
+			Annotations: map[string]string{
+				annotationDPU:          "true",
+				annotationSystemSerial: "DPU-BM1",
+				annotationDPUModel:     "BlueField 3 DPU",
+				annotationNicMode:      "DPU",
+				annotationBaseMAC:      "02:00:00:00:00:01",
+			},
+		},
+	}
+
+	hostVM := &kubevirtv1.VirtualMachine{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: testNamespace,
+			Name:      testVMName,
+			UID:       "def-456",
+			Annotations: map[string]string{
+				annotationSystemSerial:     "HOST-BM1",
+				annotationPCIeDeviceSerial: "DPU-BM1",
+			},
+		},
+	}
+
+	plainVM := &kubevirtv1.VirtualMachine{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: testNamespace,
+			Name:      testVMName,
+			UID:       "ghi-789",
+		},
+	}
+
+	t.Run("dpu", func(t *testing.T) {
+		m := &VirtualMachineResourceManager{ctx: context.TODO(), virtClient: kubevirtfake.NewSimpleClientset(dpuVM)}
+		require.NoError(t, m.Initialize(testNamespace, testVMName))
+
+		require.True(t, m.IsDPU())
+		require.Equal(t, "Bluefield", m.computerSystem.Id())
+		cs := m.computerSystem.(*ComputerSystemAdapter).ComputerSystem()
+		require.Equal(t, "DPU-BM1", *cs.SerialNumber)
+		require.Equal(t, "BlueField 3 DPU", m.DPUCard())
+
+		// The ComputerSystem advertises the NVIDIA OEM resource reference.
+		nvidia, ok := cs.Oem["Nvidia"].(map[string]interface{})
+		require.True(t, ok)
+		require.Equal(t, "/redfish/v1/Systems/Bluefield/Oem/Nvidia", nvidia["@odata.id"])
+
+		nicMode, baseMAC := m.SystemOEM()
+		require.Equal(t, "DPU", nicMode)
+		require.Equal(t, "02:00:00:00:00:01", baseMAC)
+
+		_, ok = m.AttachedDPUSerial()
+		require.False(t, ok)
+	})
+
+	t.Run("host", func(t *testing.T) {
+		m := &VirtualMachineResourceManager{ctx: context.TODO(), virtClient: kubevirtfake.NewSimpleClientset(hostVM)}
+		require.NoError(t, m.Initialize(testNamespace, testVMName))
+
+		require.False(t, m.IsDPU())
+		require.Equal(t, "1", m.computerSystem.Id())
+		require.Equal(t, "HOST-BM1", *m.computerSystem.(*ComputerSystemAdapter).ComputerSystem().SerialNumber)
+
+		serial, ok := m.AttachedDPUSerial()
+		require.True(t, ok)
+		require.Equal(t, "DPU-BM1", serial)
+	})
+
+	t.Run("plain falls back to UID serial", func(t *testing.T) {
+		m := &VirtualMachineResourceManager{ctx: context.TODO(), virtClient: kubevirtfake.NewSimpleClientset(plainVM)}
+		require.NoError(t, m.Initialize(testNamespace, testVMName))
+
+		require.False(t, m.IsDPU())
+		require.Equal(t, "1", m.computerSystem.Id())
+		require.Equal(t, "ghi789", *m.computerSystem.(*ComputerSystemAdapter).ComputerSystem().SerialNumber)
+
+		_, ok := m.AttachedDPUSerial()
+		require.False(t, ok)
+	})
+}

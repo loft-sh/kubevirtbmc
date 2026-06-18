@@ -197,3 +197,76 @@ func (mr *MockResourceManagerMockRecorder) SetBootDevice(arg0 any) *gomock.Call 
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetBootDevice", reflect.TypeOf((*MockResourceManager)(nil).SetBootDevice), arg0)
 }
+
+// IsDPU mocks base method.
+func (m *MockResourceManager) IsDPU() bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IsDPU")
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// IsDPU indicates an expected call of IsDPU.
+func (mr *MockResourceManagerMockRecorder) IsDPU() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsDPU", reflect.TypeOf((*MockResourceManager)(nil).IsDPU))
+}
+
+// DPUCard mocks base method.
+func (m *MockResourceManager) DPUCard() string {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DPUCard")
+	ret0, _ := ret[0].(string)
+	return ret0
+}
+
+// DPUCard indicates an expected call of DPUCard.
+func (mr *MockResourceManagerMockRecorder) DPUCard() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DPUCard", reflect.TypeOf((*MockResourceManager)(nil).DPUCard))
+}
+
+// SystemOEM mocks base method.
+func (m *MockResourceManager) SystemOEM() (string, string) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SystemOEM")
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(string)
+	return ret0, ret1
+}
+
+// SystemOEM indicates an expected call of SystemOEM.
+func (mr *MockResourceManagerMockRecorder) SystemOEM() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SystemOEM", reflect.TypeOf((*MockResourceManager)(nil).SystemOEM))
+}
+
+// AttachedDPUSerial mocks base method.
+func (m *MockResourceManager) AttachedDPUSerial() (string, bool) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AttachedDPUSerial")
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(bool)
+	return ret0, ret1
+}
+
+// AttachedDPUSerial indicates an expected call of AttachedDPUSerial.
+func (mr *MockResourceManagerMockRecorder) AttachedDPUSerial() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AttachedDPUSerial", reflect.TypeOf((*MockResourceManager)(nil).AttachedDPUSerial))
+}
+
+// BMCFirmwareVersion mocks base method.
+func (m *MockResourceManager) BMCFirmwareVersion() (string, bool) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "BMCFirmwareVersion")
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(bool)
+	return ret0, ret1
+}
+
+// BMCFirmwareVersion indicates an expected call of BMCFirmwareVersion.
+func (mr *MockResourceManagerMockRecorder) BMCFirmwareVersion() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BMCFirmwareVersion", reflect.TypeOf((*MockResourceManager)(nil).BMCFirmwareVersion))
+}

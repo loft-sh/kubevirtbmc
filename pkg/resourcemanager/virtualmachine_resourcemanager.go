@@ -23,6 +23,28 @@ const (
 	defaultManagerName      = "Manager"
 	defaultVirtualMediaId   = "CD1"
 	defaultVirtualMediaName = "Virtual Media"
+
+	// bluefieldComputerSystemId is the ComputerSystem id NVIDIA's Redfish clients
+	// match on (case-sensitive) to recognize a BlueField DPU. A DPU-flagged VM
+	// presents this instead of defaultComputerSystemId.
+	bluefieldComputerSystemId = "Bluefield"
+	// dpuCardChassisId is the chassis id ("Card1") NVIDIA's clients read the DPU
+	// model from.
+	dpuCardChassisId = "Card1"
+)
+
+// Annotation keys, all on the KubeVirt VM, that drive the mocked Redfish identity.
+// Each is optional; absent keys fall back to the non-DPU/plain-host behavior.
+const (
+	annotationPrefix = "bmc.kubevirtbmc.io/"
+
+	annotationDPU                = annotationPrefix + "dpu"
+	annotationSystemSerial       = annotationPrefix + "system-serial"
+	annotationDPUModel           = annotationPrefix + "dpu-model"
+	annotationNicMode            = annotationPrefix + "nic-mode"
+	annotationBaseMAC            = annotationPrefix + "base-mac"
+	annotationPCIeDeviceSerial   = annotationPrefix + "pcie-device-serial"
+	annotationBMCFirmwareVersion = annotationPrefix + "firmware-version"
 )
 
 var (
@@ -48,6 +70,15 @@ type VirtualMachineResourceManager struct {
 	computerSystem ComputerSystemInterface
 	manager        ManagerInterface
 	virtualMedia   VirtualMediaInterface
+
+	// Mocked identity derived from VM annotations at Initialize. dpu gates the
+	// BlueField presentation; the remaining fields are only meaningful when set.
+	dpu                bool
+	dpuModel           string
+	nicMode            string
+	baseMAC            string
+	pcieDeviceSerial   string
+	bmcFirmwareVersion string
 }
 
 func NewVirtualMachineResourceManager(
@@ -71,20 +102,54 @@ func (m *VirtualMachineResourceManager) Initialize(namespace, name string) error
 	m.namespace = vm.Namespace
 	m.name = vm.Name
 
+	// Mocked Redfish identity from VM annotations (lab use). Absent keys fall back
+	// to the plain-VM behavior.
+	annotations := vm.Annotations
+	m.dpu = annotations[annotationDPU] == "true"
+	m.dpuModel = annotations[annotationDPUModel]
+	m.nicMode = annotations[annotationNicMode]
+	m.baseMAC = annotations[annotationBaseMAC]
+	m.pcieDeviceSerial = annotations[annotationPCIeDeviceSerial]
+	m.bmcFirmwareVersion = annotations[annotationBMCFirmwareVersion]
+
 	// Detect boot mode from VM firmware configuration
 	bootMode := m.detectBootMode(vm)
 
-	// Strip dashes from the UUID to fit the 32-char serial limit imposed by some BMC databases
-	serial := strings.ReplaceAll(string(vm.UID), "-", "")
+	// The matching key. Prefer the explicit annotation; otherwise fall back to the
+	// VM UID with dashes stripped to fit the 32-char serial limit some BMC
+	// databases impose.
+	serial := annotations[annotationSystemSerial]
+	if serial == "" {
+		serial = strings.ReplaceAll(string(vm.UID), "-", "")
+	}
+
+	// A DPU presents the "Bluefield" ComputerSystem id NVIDIA's clients key on.
+	computerSystemId := defaultComputerSystemId
+	if m.dpu {
+		computerSystemId = bluefieldComputerSystemId
+	}
 
 	// Initialize computer system
 	m.computerSystem = NewComputerSystem(
-		defaultComputerSystemId,
+		computerSystemId,
 		strings.Join([]string{vm.Namespace, vm.Name}, "/"),
 		serial,
 		powerStateMap[vm.Status.Ready],
 		bootMode,
 	)
+
+	// A DPU advertises the NVIDIA OEM resource on its ComputerSystem so clients
+	// follow the reference to read NIC mode and base MAC. The resource itself is
+	// served by a custom route in the Redfish emulator.
+	if m.dpu {
+		if adapter, ok := m.computerSystem.(*ComputerSystemAdapter); ok {
+			adapter.ComputerSystem().Oem = map[string]interface{}{
+				"Nvidia": map[string]interface{}{
+					"@odata.id": fmt.Sprintf("/redfish/v1/Systems/%s/Oem/Nvidia", computerSystemId),
+				},
+			}
+		}
+	}
 
 	// Initialize manager
 	m.manager = NewManager(defaultManagerId, defaultManagerName)
@@ -311,6 +376,26 @@ func (m *VirtualMachineResourceManager) detectBootMode(vm *kubevirtv1.VirtualMac
 		return server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEMODE_UEFI
 	}
 	return server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEMODE_LEGACY
+}
+
+func (m *VirtualMachineResourceManager) IsDPU() bool {
+	return m.dpu
+}
+
+func (m *VirtualMachineResourceManager) DPUCard() string {
+	return m.dpuModel
+}
+
+func (m *VirtualMachineResourceManager) SystemOEM() (nicMode, baseMAC string) {
+	return m.nicMode, m.baseMAC
+}
+
+func (m *VirtualMachineResourceManager) AttachedDPUSerial() (string, bool) {
+	return m.pcieDeviceSerial, m.pcieDeviceSerial != ""
+}
+
+func (m *VirtualMachineResourceManager) BMCFirmwareVersion() (string, bool) {
+	return m.bmcFirmwareVersion, m.bmcFirmwareVersion != ""
 }
 
 func (m *VirtualMachineResourceManager) GetEthernetInterfaces() ([]EthernetInterfaceInterface, error) {

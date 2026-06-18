@@ -194,24 +194,48 @@ func TestFirmwareInventory(t *testing.T) {
 	mockRM.EXPECT().IsDPU().Return(false)
 	hostCollection := h.GetFirmwareInventoryCollection()
 	assert.Equal(t, int64(0), hostCollection.MembersodataCount)
+	// Members must be a non-nil empty slice so it serializes as [] not null;
+	// the Redfish client rejects null and fails the whole host exploration.
+	assert.NotNil(t, hostCollection.Members)
 
 	// The DPU's BMC_Firmware entry uses the annotation-driven version.
 	mockRM.EXPECT().IsDPU().Return(true)
-	mockRM.EXPECT().BMCFirmwareVersion().Return("24.10.5", true)
+	mockRM.EXPECT().BMCFirmwareVersion().Return("BF-24.10-5", true)
 	inv, err := h.GetFirmwareInventory("BMC_Firmware")
 	assert.NoError(t, err)
 	assert.NotNil(t, inv.Version)
-	assert.Equal(t, "24.10.5", *inv.Version)
+	assert.Equal(t, "BF-24.10-5", *inv.Version)
 
-	// When no annotation is set, default to a >= 24.10 version.
+	// When no annotation is set, default to a BF- >= 24.10 version.
 	mockRM.EXPECT().IsDPU().Return(true)
 	mockRM.EXPECT().BMCFirmwareVersion().Return("", false)
 	inv, err = h.GetFirmwareInventory("BMC_Firmware")
 	assert.NoError(t, err)
-	assert.Equal(t, "24.10.1", *inv.Version)
+	assert.Equal(t, "BF-24.10-1", *inv.Version)
 
 	// A non-DPU has no firmware inventory entry.
 	mockRM.EXPECT().IsDPU().Return(false)
 	_, err = h.GetFirmwareInventory("BMC_Firmware")
 	assert.Error(t, err)
+}
+
+// TestEmptyCollectionsSerializeAsArray locks in that empty Members collections
+// emit "Members":[] (not null) after sanitize. The Redfish client deserializes
+// Members into a Vec and rejects null, which previously failed host exploration.
+func TestEmptyCollectionsSerializeAsArray(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockRM := resourcemanager.NewMockResourceManager(ctrl)
+	h := NewHandler(testUsername, testPassword, mockRM)
+
+	mockRM.EXPECT().IsDPU().Return(false)
+	fwBody := sanitize(h.GetFirmwareInventoryCollection())
+	assert.Contains(t, string(fwBody), `"Members":[]`)
+	assert.NotContains(t, string(fwBody), `"Members":null`)
+
+	mockRM.EXPECT().AttachedDPUSerial().Return("", false)
+	pcieBody := sanitize(h.GetPCIeDeviceCollection("1"))
+	assert.Contains(t, string(pcieBody), `"Members":[]`)
+	assert.NotContains(t, string(pcieBody), `"Members":null`)
 }

@@ -410,7 +410,9 @@ func (h *handler) GetChassis(chassisID string) *server.ChassisV1250Chassis {
 }
 
 func (h *handler) GetPCIeDeviceCollection(chassisID string) *server.PcieDeviceCollectionPcieDeviceCollection {
-	var members []server.OdataV4IdRef
+	// Empty array, not null: the Redfish client deserializes Members into a Vec
+	// and rejects null.
+	members := []server.OdataV4IdRef{}
 	if _, ok := h.rm.AttachedDPUSerial(); ok {
 		members = append(members, server.OdataV4IdRef{
 			OdataId: fmt.Sprintf("/redfish/v1/Chassis/%s/PCIeDevices/%s", chassisID, dpuPCIeDeviceID),
@@ -456,15 +458,21 @@ func (h *handler) GetPCIeDevice(chassisID, deviceID string) (*server.PcieDeviceV
 // from: dpu_bmc_version() matches the inventory id by the substring "BMC_Firmware".
 const dpuBMCFirmwareID = "BMC_Firmware"
 
-// defaultBMCFirmwareVersion is reported when a DPU has no firmware-version annotation.
-// It is >= 24.10 so supports_bfb_install() passes and nico exercises the BFB path
-// (which this shim no-ops).
-const defaultBMCFirmwareVersion = "24.10.1"
+// defaultBMCFirmwareVersion is reported when a DPU has no firmware-version
+// annotation. The "BF-XX.YY-Z" form is required, not a plain "24.10.1": nico's
+// nic-mode query is gated by version_compare against "BF-23.10-5"
+// (libredfish nvidia_dpu nic_mode_unsupported), and a non-"BF-"/dot-form string
+// compares below it, so nico logs "cannot query nic mode" and never reads the
+// OEM Mode. "BF-24.10-1" clears that gate and also passes supports_bfb_install
+// (which strips the "bf-" prefix then compares >= 24.10).
+const defaultBMCFirmwareVersion = "BF-24.10-1"
 
 func (h *handler) GetFirmwareInventoryCollection() *server.SoftwareInventoryCollectionSoftwareInventoryCollection {
 	// Only a DPU advertises a BMC firmware version; nico reads it to gate BFB
-	// install. Non-DPU VMs keep an empty inventory.
-	var members []server.OdataV4IdRef
+	// install. Non-DPU VMs keep an empty inventory. Members must serialize as an
+	// empty array, not null: the Redfish client deserializes it into a Vec and
+	// rejects null (fails the whole host exploration).
+	members := []server.OdataV4IdRef{}
 	if h.rm.IsDPU() {
 		members = append(members, server.OdataV4IdRef{
 			OdataId: fmt.Sprintf("/redfish/v1/UpdateService/FirmwareInventory/%s", dpuBMCFirmwareID),

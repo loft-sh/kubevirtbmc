@@ -270,3 +270,33 @@ func (mr *MockResourceManagerMockRecorder) BMCFirmwareVersion() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BMCFirmwareVersion", reflect.TypeOf((*MockResourceManager)(nil).BMCFirmwareVersion))
 }
+
+// CECFirmwareVersion mocks base method.
+func (m *MockResourceManager) CECFirmwareVersion() (string, bool) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CECFirmwareVersion")
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(bool)
+	return ret0, ret1
+}
+
+// CECFirmwareVersion indicates an expected call of CECFirmwareVersion.
+func (mr *MockResourceManagerMockRecorder) CECFirmwareVersion() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CECFirmwareVersion", reflect.TypeOf((*MockResourceManager)(nil).CECFirmwareVersion))
+}
+
+// NICFirmwareVersion mocks base method.
+func (m *MockResourceManager) NICFirmwareVersion() (string, bool) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "NICFirmwareVersion")
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(bool)
+	return ret0, ret1
+}
+
+// NICFirmwareVersion indicates an expected call of NICFirmwareVersion.
+func (mr *MockResourceManagerMockRecorder) NICFirmwareVersion() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NICFirmwareVersion", reflect.TypeOf((*MockResourceManager)(nil).NICFirmwareVersion))
+}

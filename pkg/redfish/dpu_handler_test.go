@@ -185,11 +185,14 @@ func TestFirmwareInventory(t *testing.T) {
 	mockRM := resourcemanager.NewMockResourceManager(ctrl)
 	h := NewHandler(testUsername, testPassword, mockRM)
 
-	// A DPU lists the BMC_Firmware member; a non-DPU keeps an empty inventory.
+	// A DPU lists the three members nico's fw checks read (BMC, CEC, NIC); a
+	// non-DPU keeps an empty inventory.
 	mockRM.EXPECT().IsDPU().Return(true)
 	dpuCollection := h.GetFirmwareInventoryCollection()
-	assert.Equal(t, int64(1), dpuCollection.MembersodataCount)
+	assert.Equal(t, int64(3), dpuCollection.MembersodataCount)
 	assert.Equal(t, "/redfish/v1/UpdateService/FirmwareInventory/BMC_Firmware", dpuCollection.Members[0].OdataId)
+	assert.Equal(t, "/redfish/v1/UpdateService/FirmwareInventory/Bluefield_FW_ERoT", dpuCollection.Members[1].OdataId)
+	assert.Equal(t, "/redfish/v1/UpdateService/FirmwareInventory/DPU_NIC", dpuCollection.Members[2].OdataId)
 
 	mockRM.EXPECT().IsDPU().Return(false)
 	hostCollection := h.GetFirmwareInventoryCollection()
@@ -198,20 +201,43 @@ func TestFirmwareInventory(t *testing.T) {
 	// the Redfish client rejects null and fails the whole host exploration.
 	assert.NotNil(t, hostCollection.Members)
 
-	// The DPU's BMC_Firmware entry uses the annotation-driven version.
+	// Each member's version is annotation-driven.
 	mockRM.EXPECT().IsDPU().Return(true)
-	mockRM.EXPECT().BMCFirmwareVersion().Return("BF-24.10-5", true)
+	mockRM.EXPECT().BMCFirmwareVersion().Return("BF-25.10-20", true)
 	inv, err := h.GetFirmwareInventory("BMC_Firmware")
 	assert.NoError(t, err)
 	assert.NotNil(t, inv.Version)
-	assert.Equal(t, "BF-24.10-5", *inv.Version)
+	assert.Equal(t, "BF-25.10-20", *inv.Version)
 
-	// When no annotation is set, default to a BF- >= 24.10 version.
+	mockRM.EXPECT().IsDPU().Return(true)
+	mockRM.EXPECT().CECFirmwareVersion().Return("00.02.0195.0000_n99", true)
+	inv, err = h.GetFirmwareInventory("Bluefield_FW_ERoT")
+	assert.NoError(t, err)
+	assert.Equal(t, "00.02.0195.0000_n99", *inv.Version)
+
+	// When no annotation is set, each defaults to nico's hardware_models value.
 	mockRM.EXPECT().IsDPU().Return(true)
 	mockRM.EXPECT().BMCFirmwareVersion().Return("", false)
 	inv, err = h.GetFirmwareInventory("BMC_Firmware")
 	assert.NoError(t, err)
-	assert.Equal(t, "BF-24.10-1", *inv.Version)
+	assert.Equal(t, "BF-25.10-20", *inv.Version)
+
+	mockRM.EXPECT().IsDPU().Return(true)
+	mockRM.EXPECT().CECFirmwareVersion().Return("", false)
+	inv, err = h.GetFirmwareInventory("Bluefield_FW_ERoT")
+	assert.NoError(t, err)
+	assert.Equal(t, "00.02.0195.0000_n02", *inv.Version)
+
+	mockRM.EXPECT().IsDPU().Return(true)
+	mockRM.EXPECT().NICFirmwareVersion().Return("", false)
+	inv, err = h.GetFirmwareInventory("DPU_NIC")
+	assert.NoError(t, err)
+	assert.Equal(t, "32.47.2682", *inv.Version)
+
+	// An unknown inventory id on a DPU is not found.
+	mockRM.EXPECT().IsDPU().Return(true)
+	_, err = h.GetFirmwareInventory("Nonexistent")
+	assert.Error(t, err)
 
 	// A non-DPU has no firmware inventory entry.
 	mockRM.EXPECT().IsDPU().Return(false)

@@ -45,6 +45,8 @@ const (
 	annotationBaseMAC            = annotationPrefix + "base-mac"
 	annotationPCIeDeviceSerial   = annotationPrefix + "pcie-device-serial"
 	annotationBMCFirmwareVersion = annotationPrefix + "firmware-version"
+	annotationCECFirmwareVersion = annotationPrefix + "firmware-version-cec"
+	annotationNICFirmwareVersion = annotationPrefix + "firmware-version-nic"
 )
 
 var (
@@ -79,6 +81,8 @@ type VirtualMachineResourceManager struct {
 	baseMAC            string
 	pcieDeviceSerial   string
 	bmcFirmwareVersion string
+	cecFirmwareVersion string
+	nicFirmwareVersion string
 }
 
 func NewVirtualMachineResourceManager(
@@ -111,6 +115,8 @@ func (m *VirtualMachineResourceManager) Initialize(namespace, name string) error
 	m.baseMAC = annotations[annotationBaseMAC]
 	m.pcieDeviceSerial = annotations[annotationPCIeDeviceSerial]
 	m.bmcFirmwareVersion = annotations[annotationBMCFirmwareVersion]
+	m.cecFirmwareVersion = annotations[annotationCECFirmwareVersion]
+	m.nicFirmwareVersion = annotations[annotationNICFirmwareVersion]
 
 	// Detect boot mode from VM firmware configuration
 	bootMode := m.detectBootMode(vm)
@@ -402,6 +408,14 @@ func (m *VirtualMachineResourceManager) AttachedDPUSerial() (string, bool) {
 
 func (m *VirtualMachineResourceManager) BMCFirmwareVersion() (string, bool) {
 	return m.bmcFirmwareVersion, m.bmcFirmwareVersion != ""
+}
+
+func (m *VirtualMachineResourceManager) CECFirmwareVersion() (string, bool) {
+	return m.cecFirmwareVersion, m.cecFirmwareVersion != ""
+}
+
+func (m *VirtualMachineResourceManager) NICFirmwareVersion() (string, bool) {
+	return m.nicFirmwareVersion, m.nicFirmwareVersion != ""
 }
 
 func (m *VirtualMachineResourceManager) GetEthernetInterfaces() ([]EthernetInterfaceInterface, error) {

@@ -454,29 +454,51 @@ func (h *handler) GetPCIeDevice(chassisID, deviceID string) (*server.PcieDeviceV
 	}, nil
 }
 
-// dpuBMCFirmwareID is the FirmwareInventory member nico reads the DPU BMC version
-// from: dpu_bmc_version() matches the inventory id by the substring "BMC_Firmware".
-const dpuBMCFirmwareID = "BMC_Firmware"
+// dpuBMCFirmwareID, dpuCECFirmwareID and dpuNICFirmwareID are the FirmwareInventory
+// member ids nico matches by substring while driving a DPU. BMC_Firmware is read
+// during discovery (dpu_bmc_version) and, together with the CEC (Bluefield_FW_ERoT)
+// and NIC (DPU_NIC) members, during WaitingForPlatformConfiguration by
+// check_fw_component_version, which EXACT-matches each Version against nico's
+// hardware_models config for the DPU model and parks the DPU forever on a mismatch.
+const (
+	dpuBMCFirmwareID = "BMC_Firmware"
+	dpuCECFirmwareID = "Bluefield_FW_ERoT"
+	dpuNICFirmwareID = "DPU_NIC"
+)
 
-// defaultBMCFirmwareVersion is reported when a DPU has no firmware-version
-// annotation. The "BF-XX.YY-Z" form is required, not a plain "24.10.1": nico's
-// nic-mode query is gated by version_compare against "BF-23.10-5"
-// (libredfish nvidia_dpu nic_mode_unsupported), and a non-"BF-"/dot-form string
-// compares below it, so nico logs "cannot query nic mode" and never reads the
-// OEM Mode. "BF-24.10-1" clears that gate and also passes supports_bfb_install
-// (which strips the "bf-" prefix then compares >= 24.10).
-const defaultBMCFirmwareVersion = "BF-24.10-1"
+// Default firmware versions, reported when the corresponding annotation is unset.
+// They mirror nico's built-in hardware_models defaults for bluefield3 so
+// check_fw_component_version's exact match passes out of the box; the deployed
+// nico-api may override hardware_models, so each is annotation-overridable and
+// lab-setup reconciles them to the live config at deploy.
+//
+// The BMC version doubles as the discovery-era value and must stay in the
+// "BF-XX.YY-Z" form: nico's nic-mode query is gated by version_compare against
+// "BF-23.10-5" (libredfish nvidia_dpu nic_mode_unsupported) and a non-"BF-" or
+// dot-form string compares below it, so nico logs "cannot query nic mode" and
+// never reads the OEM Mode. "BF-25.10-20" clears that gate, passes
+// supports_bfb_install (strips "bf-" then compares >= 24.10) and matches the
+// hardware_models default in one value.
+const (
+	defaultBMCFirmwareVersion = "BF-25.10-20"
+	defaultCECFirmwareVersion = "00.02.0195.0000_n02"
+	defaultNICFirmwareVersion = "32.47.2682"
+)
 
 func (h *handler) GetFirmwareInventoryCollection() *server.SoftwareInventoryCollectionSoftwareInventoryCollection {
-	// Only a DPU advertises a BMC firmware version; nico reads it to gate BFB
-	// install. Non-DPU VMs keep an empty inventory. Members must serialize as an
-	// empty array, not null: the Redfish client deserializes it into a Vec and
-	// rejects null (fails the whole host exploration).
+	// Only a DPU advertises firmware: nico reads BMC_Firmware to gate BFB install
+	// during discovery, and BMC_Firmware + Bluefield_FW_ERoT + DPU_NIC during
+	// WaitingForPlatformConfiguration (check_fw_component_version). Non-DPU VMs keep
+	// an empty inventory. Members must serialize as an empty array, not null: the
+	// Redfish client deserializes it into a Vec and rejects null (fails the whole
+	// host exploration).
 	members := []server.OdataV4IdRef{}
 	if h.rm.IsDPU() {
-		members = append(members, server.OdataV4IdRef{
-			OdataId: fmt.Sprintf("/redfish/v1/UpdateService/FirmwareInventory/%s", dpuBMCFirmwareID),
-		})
+		for _, id := range []string{dpuBMCFirmwareID, dpuCECFirmwareID, dpuNICFirmwareID} {
+			members = append(members, server.OdataV4IdRef{
+				OdataId: fmt.Sprintf("/redfish/v1/UpdateService/FirmwareInventory/%s", id),
+			})
+		}
 	}
 
 	return &server.SoftwareInventoryCollectionSoftwareInventoryCollection{
@@ -490,24 +512,47 @@ func (h *handler) GetFirmwareInventoryCollection() *server.SoftwareInventoryColl
 }
 
 func (h *handler) GetFirmwareInventory(inventoryID string) (*server.SoftwareInventoryV1101SoftwareInventory, error) {
-	// nico reads the BMC firmware version here to decide whether BFB install is
-	// supported (requires >= 24.10). Only a DPU exposes it; the annotation drives
-	// the value, defaulting to a >= 24.10 version so the BFB path is exercised.
-	if !h.rm.IsDPU() || inventoryID != dpuBMCFirmwareID {
+	// nico reads these versions to gate BFB install (BMC_Firmware, >= 24.10) and to
+	// verify firmware in check_fw_component_version, which EXACT-matches each against
+	// its hardware_models config. Each is annotation-driven with a default that
+	// mirrors nico's config. Only a DPU exposes them.
+	if !h.rm.IsDPU() {
 		return nil, fmt.Errorf("unknown firmware inventory id: %s", inventoryID)
 	}
 
-	version, ok := h.rm.BMCFirmwareVersion()
-	if !ok {
-		version = defaultBMCFirmwareVersion
+	var name, version string
+	switch inventoryID {
+	case dpuBMCFirmwareID:
+		name = "BMC Firmware"
+		if v, ok := h.rm.BMCFirmwareVersion(); ok {
+			version = v
+		} else {
+			version = defaultBMCFirmwareVersion
+		}
+	case dpuCECFirmwareID:
+		name = "ERoT Firmware"
+		if v, ok := h.rm.CECFirmwareVersion(); ok {
+			version = v
+		} else {
+			version = defaultCECFirmwareVersion
+		}
+	case dpuNICFirmwareID:
+		name = "NIC Firmware"
+		if v, ok := h.rm.NICFirmwareVersion(); ok {
+			version = v
+		} else {
+			version = defaultNICFirmwareVersion
+		}
+	default:
+		return nil, fmt.Errorf("unknown firmware inventory id: %s", inventoryID)
 	}
 
 	return &server.SoftwareInventoryV1101SoftwareInventory{
 		OdataContext: "/redfish/v1/$metadata#SoftwareInventory.SoftwareInventory",
-		OdataId:      fmt.Sprintf("/redfish/v1/UpdateService/FirmwareInventory/%s", dpuBMCFirmwareID),
+		OdataId:      fmt.Sprintf("/redfish/v1/UpdateService/FirmwareInventory/%s", inventoryID),
 		OdataType:    "#SoftwareInventory.v1_10_1.SoftwareInventory",
-		Id:           dpuBMCFirmwareID,
-		Name:         "BMC Firmware",
+		Id:           inventoryID,
+		Name:         name,
 		Version:      util.Ptr(version),
 	}, nil
 }

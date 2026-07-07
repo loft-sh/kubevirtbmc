@@ -28,4 +28,6 @@ type ResourceManager interface {
 	SystemOEM() (nicMode, baseMAC string)
 	AttachedDPUSerial() (serial string, ok bool)
 	BMCFirmwareVersion() (version string, ok bool)
+	CECFirmwareVersion() (version string, ok bool)
+	NICFirmwareVersion() (version string, ok bool)
 }

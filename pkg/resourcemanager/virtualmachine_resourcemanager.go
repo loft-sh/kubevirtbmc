@@ -148,6 +148,12 @@ func (m *VirtualMachineResourceManager) Initialize(namespace, name string) error
 					"@odata.id": fmt.Sprintf("/redfish/v1/Systems/%s/Oem/Nvidia", computerSystemId),
 				},
 			}
+			// nico's did_dpu_finish_booting parks the DPU ("waiting for DPU to
+			// come back up") unless BootProgress.LastState reports the OS running.
+			// The shim has no real boot, so it reports the DPU as booted.
+			adapter.ComputerSystem().BootProgress = server.ComputerSystemV1220BootProgress{
+				LastState: server.COMPUTERSYSTEMV1220BOOTPROGRESSTYPES_OS_RUNNING,
+			}
 		}
 	}
 

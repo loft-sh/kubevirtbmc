@@ -59890,13 +59890,12 @@ func (s *APIService) RedfishV1SystemsComputerSystemIdBiosGet(ctx context.Context
 	// TODO - update RedfishV1SystemsComputerSystemIdBiosGet with the required logic for this service method.
 	// Add api_default_service.go to the .openapi-generator-ignore to avoid overwriting this service implementation when updating open api generation.
 
-	// TODO: Uncomment the next line to return response Response(200, BiosV122Bios{}) or use other options such as http.Ok ...
-	// return Response(200, BiosV122Bios{}), nil
+	bios, err := s.handler.GetBios()
+	if err != nil {
+		return server.Response(http.StatusNotFound, nil), err
+	}
 
-	// TODO: Uncomment the next line to return response Response(0, RedfishError{}) or use other options such as http.Ok ...
-	// return Response(0, RedfishError{}), nil
-
-	return server.Response(http.StatusNotImplemented, nil), errors.New("RedfishV1SystemsComputerSystemIdBiosGet method not implemented")
+	return server.Response(200, sanitize(bios)), nil
 }
 
 // RedfishV1SystemsComputerSystemIdBiosPut -
@@ -65989,13 +65988,12 @@ func (s *APIService) RedfishV1SystemsComputerSystemIdSecureBootGet(ctx context.C
 	// TODO - update RedfishV1SystemsComputerSystemIdSecureBootGet with the required logic for this service method.
 	// Add api_default_service.go to the .openapi-generator-ignore to avoid overwriting this service implementation when updating open api generation.
 
-	// TODO: Uncomment the next line to return response Response(200, SecureBootV111SecureBoot{}) or use other options such as http.Ok ...
-	// return Response(200, SecureBootV111SecureBoot{}), nil
+	secureBoot, err := s.handler.GetSecureBoot()
+	if err != nil {
+		return server.Response(http.StatusNotFound, nil), err
+	}
 
-	// TODO: Uncomment the next line to return response Response(0, RedfishError{}) or use other options such as http.Ok ...
-	// return Response(0, RedfishError{}), nil
-
-	return server.Response(http.StatusNotImplemented, nil), errors.New("RedfishV1SystemsComputerSystemIdSecureBootGet method not implemented")
+	return server.Response(200, sanitize(secureBoot)), nil
 }
 
 // RedfishV1SystemsComputerSystemIdSecureBootPut -
@@ -66023,19 +66021,9 @@ func (s *APIService) RedfishV1SystemsComputerSystemIdSecureBootPatch(ctx context
 	// TODO - update RedfishV1SystemsComputerSystemIdSecureBootPatch with the required logic for this service method.
 	// Add api_default_service.go to the .openapi-generator-ignore to avoid overwriting this service implementation when updating open api generation.
 
-	// TODO: Uncomment the next line to return response Response(200, SecureBootV111SecureBoot{}) or use other options such as http.Ok ...
-	// return Response(200, SecureBootV111SecureBoot{}), nil
-
-	// TODO: Uncomment the next line to return response Response(202, TaskV173Task{}) or use other options such as http.Ok ...
-	// return Response(202, TaskV173Task{}), nil
-
-	// TODO: Uncomment the next line to return response Response(204, {}) or use other options such as http.Ok ...
-	// return Response(204, nil),nil
-
-	// TODO: Uncomment the next line to return response Response(0, RedfishError{}) or use other options such as http.Ok ...
-	// return Response(0, RedfishError{}), nil
-
-	return server.Response(http.StatusNotImplemented, nil), errors.New("RedfishV1SystemsComputerSystemIdSecureBootPatch method not implemented")
+	// The shim reports SecureBoot as already disabled, so nico's disable request
+	// has nothing to persist. Acknowledge it so the client proceeds.
+	return server.Response(http.StatusNoContent, nil), nil
 }
 
 // RedfishV1SystemsComputerSystemIdSecureBootActionsSecureBootResetKeysPost -

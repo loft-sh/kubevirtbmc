@@ -1126,6 +1126,9 @@ func TestInitializeAnnotations(t *testing.T) {
 		require.Equal(t, "DPU", nicMode)
 		require.Equal(t, "02:00:00:00:00:01", baseMAC)
 
+		// The DPU reports its OS as running so nico's did_dpu_finish_booting passes.
+		require.Equal(t, "OSRunning", string(cs.BootProgress.LastState))
+
 		_, ok = m.AttachedDPUSerial()
 		require.False(t, ok)
 	})
@@ -1136,7 +1139,10 @@ func TestInitializeAnnotations(t *testing.T) {
 
 		require.False(t, m.IsDPU())
 		require.Equal(t, "1", m.computerSystem.Id())
-		require.Equal(t, "HOST-BM1", *m.computerSystem.(*ComputerSystemAdapter).ComputerSystem().SerialNumber)
+		hostCS := m.computerSystem.(*ComputerSystemAdapter).ComputerSystem()
+		require.Equal(t, "HOST-BM1", *hostCS.SerialNumber)
+		// Only a DPU reports BootProgress.
+		require.Empty(t, string(hostCS.BootProgress.LastState))
 
 		serial, ok := m.AttachedDPUSerial()
 		require.True(t, ok)

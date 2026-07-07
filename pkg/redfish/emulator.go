@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"sync"
 
+	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
 	"kubevirt.io/kubevirtbmc/pkg/generated/redfish/server"
 	"kubevirt.io/kubevirtbmc/pkg/resourcemanager"
@@ -25,8 +26,26 @@ type Emulator struct {
 
 func NewEmulator(ctx context.Context, port int, bmcUser string, bmcPassword string, resourceManager resourcemanager.ResourceManager) *Emulator {
 	apiService := NewAPIService(bmcUser, bmcPassword, resourceManager)
-	apiController := server.NewDefaultAPIController(apiService)
 	authMiddleware := session.AuthMiddleware(bmcUser, bmcPassword)
+
+	return &Emulator{
+		ctx:         ctx,
+		port:        port,
+		bmcUser:     bmcUser,
+		bmcPassword: bmcPassword,
+		server: &http.Server{
+			Addr:    fmt.Sprintf(":%d", port),
+			Handler: newRouter(apiService, authMiddleware),
+		},
+	}
+}
+
+// newRouter builds the Redfish router: the generated routes on an auth-protected
+// subrouter plus the DPU-only resources the generated router has no route for.
+// Tests build the router through this same function so route reachability matches
+// production exactly.
+func newRouter(apiService *APIService, authMiddleware mux.MiddlewareFunc) *mux.Router {
+	apiController := server.NewDefaultAPIController(apiService)
 	router := server.NewRouter(authMiddleware, apiController)
 
 	// The NVIDIA OEM resource carrying the DPU NIC mode and base MAC has no route
@@ -37,16 +56,23 @@ func NewEmulator(ctx context.Context, port int, bmcUser string, bmcPassword stri
 		Path("/redfish/v1/Systems/{ComputerSystemId}/Oem/Nvidia").
 		Handler(authMiddleware(http.HandlerFunc(apiService.handler.HandleSystemOEM)))
 
-	return &Emulator{
-		ctx:         ctx,
-		port:        port,
-		bmcUser:     bmcUser,
-		bmcPassword: bmcPassword,
-		server: &http.Server{
-			Addr:    fmt.Sprintf(":%d", port),
-			Handler: router,
-		},
-	}
+	// The DPU BIOS/boot mutations nico issues while driving a DPU to
+	// WaitingForNetworkConfig have no route in the generated router. The shim
+	// models no real BIOS and accepts them as no-ops (see HandleDPUConfigNoop).
+	router.
+		Methods(http.MethodPatch).
+		Path("/redfish/v1/Systems/{ComputerSystemId}/Settings").
+		Handler(authMiddleware(http.HandlerFunc(apiService.handler.HandleDPUConfigNoop)))
+	router.
+		Methods(http.MethodPatch).
+		Path("/redfish/v1/Systems/{ComputerSystemId}/Bios/Settings").
+		Handler(authMiddleware(http.HandlerFunc(apiService.handler.HandleDPUConfigNoop)))
+	router.
+		Methods(http.MethodPost).
+		Path("/redfish/v1/Systems/{ComputerSystemId}/Oem/Nvidia/Actions/HostRshim.Set").
+		Handler(authMiddleware(http.HandlerFunc(apiService.handler.HandleDPUConfigNoop)))
+
+	return router
 }
 
 func (e *Emulator) Run() error {

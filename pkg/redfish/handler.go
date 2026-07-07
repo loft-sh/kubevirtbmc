@@ -636,6 +636,80 @@ func (h *handler) HandleSystemOEM(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// dpuSecureBootID and dpuBiosID are the resource ids a DPU presents under its
+// ComputerSystem. biosHostPrivilegeLevel and biosInternalCPUModel are the BIOS
+// attribute values nico's is_bios_setup verifies (see GetBios).
+const (
+	dpuSecureBootID        = "SecureBoot"
+	dpuBiosID              = "Bios"
+	biosHostPrivilegeLevel = "Restricted"
+	biosInternalCPUModel   = "Embedded"
+)
+
+// GetSecureBoot reports UEFI Secure Boot as already disabled on a DPU. nico's
+// machine-controller (CheckSecureBootStatus) reads both SecureBootEnable and
+// SecureBootCurrentBoot; if either is absent it treats the response as the known
+// BlueField "incomplete SecureBoot after UEFI client" race and force-restarts the
+// DPU up to ten times before erroring. Reporting both as disabled makes it skip
+// the disable/reboot loop straight to SetUefiHttpBoot. Only a DPU serves this.
+func (h *handler) GetSecureBoot() (*server.SecureBootV111SecureBoot, error) {
+	if !h.rm.IsDPU() {
+		return nil, fmt.Errorf("secure boot not supported")
+	}
+
+	return &server.SecureBootV111SecureBoot{
+		OdataContext:          "/redfish/v1/$metadata#SecureBoot.SecureBoot",
+		OdataId:               fmt.Sprintf("/redfish/v1/Systems/%s/SecureBoot", bluefieldComputerSystemId),
+		OdataType:             "#SecureBoot.v1_1_1.SecureBoot",
+		Id:                    dpuSecureBootID,
+		Name:                  "UEFI Secure Boot",
+		SecureBootEnable:      util.Ptr(false),
+		SecureBootCurrentBoot: server.SECUREBOOTV111SECUREBOOTCURRENTBOOTTYPE_DISABLED,
+	}, nil
+}
+
+// GetBios reports the DPU BIOS attributes nico's is_bios_setup verifies in
+// PollingBiosSetup: it reads Systems/<id>/Bios and requires HostPrivilegeLevel
+// "Restricted" and InternalCPUModel "Embedded" before advancing the DPU to
+// WaitingForNetworkConfig. The shim models no real BIOS, so it reports the
+// already-applied values; the writes that would set them (Bios/Settings) are
+// accepted as no-ops. Only a DPU serves this.
+func (h *handler) GetBios() (*server.BiosV122Bios, error) {
+	if !h.rm.IsDPU() {
+		return nil, fmt.Errorf("bios not supported")
+	}
+
+	return &server.BiosV122Bios{
+		OdataContext: "/redfish/v1/$metadata#Bios.Bios",
+		OdataId:      fmt.Sprintf("/redfish/v1/Systems/%s/Bios", bluefieldComputerSystemId),
+		OdataType:    "#Bios.v1_2_2.Bios",
+		Id:           dpuBiosID,
+		Name:         "BIOS Configuration",
+		Attributes: map[string]interface{}{
+			"HostPrivilegeLevel": biosHostPrivilegeLevel,
+			"InternalCPUModel":   biosInternalCPUModel,
+		},
+	}, nil
+}
+
+// HandleDPUConfigNoop accepts the DPU BIOS/boot mutations nico issues while
+// driving a DPU to WaitingForNetworkConfig: the boot-source override
+// (Systems/<id>/Settings), the BIOS attribute writes (Systems/<id>/Bios/Settings)
+// and the host-rshim action (Systems/<id>/Oem/Nvidia/Actions/HostRshim.Set). The
+// shim models no real BIOS, so the values nico reads back (SecureBoot, Bios
+// Attributes, BootProgress) are served statically and these writes have nothing to
+// persist; they are acknowledged with 204. None of these paths have a route in the
+// generated Redfish router, so they are registered directly in the emulator. A
+// non-DPU BMC never receives them.
+func (h *handler) HandleDPUConfigNoop(w http.ResponseWriter, r *http.Request) {
+	if !h.rm.IsDPU() {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *handler) GetManagerEthernetInterfaceCollection(managerID string) *server.EthernetInterfaceCollectionEthernetInterfaceCollection {
 	return &server.EthernetInterfaceCollectionEthernetInterfaceCollection{
 		OdataContext:      "/redfish/v1/$metadata#EthernetInterfaceCollection.EthernetInterfaceCollection",

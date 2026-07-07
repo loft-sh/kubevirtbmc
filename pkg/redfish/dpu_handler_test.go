@@ -219,6 +219,77 @@ func TestFirmwareInventory(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func TestGetSecureBoot(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockRM := resourcemanager.NewMockResourceManager(ctrl)
+	h := NewHandler(testUsername, testPassword, mockRM)
+
+	// A DPU reports Secure Boot as already disabled. Both fields must be present:
+	// nico treats a response missing either as the BlueField "incomplete SecureBoot"
+	// race and force-restarts up to ten times before erroring.
+	mockRM.EXPECT().IsDPU().Return(true)
+	sb, err := h.GetSecureBoot()
+	assert.NoError(t, err)
+	assert.NotNil(t, sb.SecureBootEnable)
+	assert.False(t, *sb.SecureBootEnable)
+	assert.Equal(t, server.SECUREBOOTV111SECUREBOOTCURRENTBOOTTYPE_DISABLED, sb.SecureBootCurrentBoot)
+
+	// After sanitize both fields must still be on the wire. SecureBootEnable is a
+	// bool of false and must not be dropped, and SecureBootCurrentBoot must be
+	// present, or nico reads MissingData.
+	body := string(sanitize(sb))
+	assert.Contains(t, body, `"SecureBootEnable":false`)
+	assert.Contains(t, body, `"SecureBootCurrentBoot":"Disabled"`)
+
+	// A non-DPU does not serve Secure Boot.
+	mockRM.EXPECT().IsDPU().Return(false)
+	_, err = h.GetSecureBoot()
+	assert.Error(t, err)
+}
+
+func TestGetBios(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockRM := resourcemanager.NewMockResourceManager(ctrl)
+	h := NewHandler(testUsername, testPassword, mockRM)
+
+	// A DPU reports the BIOS attributes nico's is_bios_setup verifies before
+	// leaving PollingBiosSetup.
+	mockRM.EXPECT().IsDPU().Return(true)
+	bios, err := h.GetBios()
+	assert.NoError(t, err)
+	assert.Equal(t, "Restricted", bios.Attributes["HostPrivilegeLevel"])
+	assert.Equal(t, "Embedded", bios.Attributes["InternalCPUModel"])
+
+	// A non-DPU does not serve BIOS.
+	mockRM.EXPECT().IsDPU().Return(false)
+	_, err = h.GetBios()
+	assert.Error(t, err)
+}
+
+func TestHandleDPUConfigNoop(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockRM := resourcemanager.NewMockResourceManager(ctrl)
+	h := NewHandler(testUsername, testPassword, mockRM)
+
+	// A DPU accepts the BIOS/boot mutations as no-ops.
+	mockRM.EXPECT().IsDPU().Return(true)
+	rec := httptest.NewRecorder()
+	h.HandleDPUConfigNoop(rec, httptest.NewRequest(http.MethodPatch, "/redfish/v1/Systems/Bluefield/Settings", nil))
+	assert.Equal(t, http.StatusNoContent, rec.Code)
+
+	// A non-DPU never receives them.
+	mockRM.EXPECT().IsDPU().Return(false)
+	rec = httptest.NewRecorder()
+	h.HandleDPUConfigNoop(rec, httptest.NewRequest(http.MethodPatch, "/redfish/v1/Systems/1/Settings", nil))
+	assert.Equal(t, http.StatusNotFound, rec.Code)
+}
+
 // TestEmptyCollectionsSerializeAsArray locks in that empty Members collections
 // emit "Members":[] (not null) after sanitize. The Redfish client deserializes
 // Members into a Vec and rejects null, which previously failed host exploration.

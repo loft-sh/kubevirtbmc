@@ -72,6 +72,31 @@ func newRouter(apiService *APIService, authMiddleware mux.MiddlewareFunc) *mux.R
 		Path("/redfish/v1/Systems/{ComputerSystemId}/Oem/Nvidia/Actions/HostRshim.Set").
 		Handler(authMiddleware(http.HandlerFunc(apiService.handler.HandleDPUConfigNoop)))
 
+	// The HPE BIOS/boot mutations nico issues while driving a host through
+	// HostInit use lowercase paths that the generated router has no route for, and
+	// libredfish is inconsistent about the trailing slash (e.g. set_virt_enable
+	// omits it on Bios/settings, the other writes include it). These are
+	// registered on a subrouter with StrictSlash disabled so the optional trailing
+	// slash is matched by the route regex ({_:/?}) directly; under the router's
+	// StrictSlash(true) the opposite slash form would 301, and a redirected PATCH
+	// is dropped to a GET per HTTP redirect rules. The shim accepts the writes as
+	// no-ops and serves the proprietary boot-order resource. A host BMC serves
+	// these; the handlers 404 for a DPU.
+	hostRoutes := router.NewRoute().Subrouter()
+	hostRoutes.StrictSlash(false)
+	hostRoutes.
+		Methods(http.MethodGet).
+		Path("/redfish/v1/Systems/{ComputerSystemId}/Bios/oem/hpe/boot{_:/?}").
+		Handler(authMiddleware(http.HandlerFunc(apiService.handler.HandleHostBiosOemBoot)))
+	hostRoutes.
+		Methods(http.MethodPatch).
+		Path("/redfish/v1/Systems/{ComputerSystemId}/Bios/oem/hpe/boot/settings{_:/?}").
+		Handler(authMiddleware(http.HandlerFunc(apiService.handler.HandleHostConfigNoop)))
+	hostRoutes.
+		Methods(http.MethodPatch).
+		Path("/redfish/v1/Systems/{ComputerSystemId}/Bios/settings{_:/?}").
+		Handler(authMiddleware(http.HandlerFunc(apiService.handler.HandleHostConfigNoop)))
+
 	return router
 }
 

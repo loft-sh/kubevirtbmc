@@ -47,6 +47,20 @@ const (
 	annotationBMCFirmwareVersion = annotationPrefix + "firmware-version"
 	annotationCECFirmwareVersion = annotationPrefix + "firmware-version-cec"
 	annotationNICFirmwareVersion = annotationPrefix + "firmware-version-nic"
+	annotationBootMAC            = annotationPrefix + "boot-mac"
+)
+
+// hostBootInterfaceID and hostBootInterfaceUefiDevicePath describe the synthetic
+// boot NIC a host BMC advertises. nico sets a host's primary (boot) interface by
+// matching the paired DPU's base MAC against the host's EthernetInterfaces and
+// requires the matching interface to carry a non-null, parseable UEFI/PCI device
+// path (site_explorer fetch_host_primary_interface_mac); otherwise the boot
+// interface never resolves and HostInit's SetBootOrder errors. The path only has
+// to be a valid PciRoot(...)/Pci(...) string (its numeric form is used to pick
+// the lowest-PCI interface); its exact value is otherwise irrelevant.
+const (
+	hostBootInterfaceID             = "boot"
+	hostBootInterfaceUefiDevicePath = "PciRoot(0x0)/Pci(0x1,0x0)/Pci(0x0,0x0)"
 )
 
 var (
@@ -83,6 +97,7 @@ type VirtualMachineResourceManager struct {
 	bmcFirmwareVersion string
 	cecFirmwareVersion string
 	nicFirmwareVersion string
+	hostBootMAC        string
 }
 
 func NewVirtualMachineResourceManager(
@@ -117,6 +132,7 @@ func (m *VirtualMachineResourceManager) Initialize(namespace, name string) error
 	m.bmcFirmwareVersion = annotations[annotationBMCFirmwareVersion]
 	m.cecFirmwareVersion = annotations[annotationCECFirmwareVersion]
 	m.nicFirmwareVersion = annotations[annotationNICFirmwareVersion]
+	m.hostBootMAC = annotations[annotationBootMAC]
 
 	// Detect boot mode from VM firmware configuration
 	bootMode := m.detectBootMode(vm)
@@ -418,6 +434,10 @@ func (m *VirtualMachineResourceManager) NICFirmwareVersion() (string, bool) {
 	return m.nicFirmwareVersion, m.nicFirmwareVersion != ""
 }
 
+func (m *VirtualMachineResourceManager) HostBootMAC() (string, bool) {
+	return m.hostBootMAC, m.hostBootMAC != ""
+}
+
 func (m *VirtualMachineResourceManager) GetEthernetInterfaces() ([]EthernetInterfaceInterface, error) {
 	vm, err := m.virtClient.KubevirtV1().VirtualMachines(m.namespace).Get(m.ctx, m.name, metav1.GetOptions{})
 	if err != nil {
@@ -441,7 +461,7 @@ func (m *VirtualMachineResourceManager) GetEthernetInterfaces() ([]EthernetInter
 		linkStatus = server.ETHERNETINTERFACEV1120LINKSTATUS_LINK_DOWN
 	}
 
-	result := make([]EthernetInterfaceInterface, 0, len(interfaces))
+	result := make([]EthernetInterfaceInterface, 0, len(interfaces)+1)
 	for _, iface := range interfaces {
 		if iface.MacAddress == "" {
 			logrus.WithField("interface", iface.Name).Warn("Skipping interface without MAC address")
@@ -456,6 +476,23 @@ func (m *VirtualMachineResourceManager) GetEthernetInterfaces() ([]EthernetInter
 			linkStatus,
 		)
 		result = append(result, ethernetIface)
+	}
+
+	// A host BMC synthesizes the boot NIC nico's ingestion keys on: an interface
+	// whose MAC is the paired DPU's base MAC and that carries a UEFI/PCI device
+	// path. The VM's real NICs (mgmt/fabric) do not match the DPU MAC, so nico
+	// ignores them; this synthetic one is what sets the host's primary/boot
+	// interface. Only when the boot MAC annotation is set (a DPU-backed host).
+	if !m.dpu && m.hostBootMAC != "" {
+		bootIface := NewEthernetInterface(
+			hostBootInterfaceID,
+			hostBootInterfaceID,
+			m.hostBootMAC,
+			running,
+			linkStatus,
+		)
+		bootIface.EthernetInterface().UefiDevicePath = util.Ptr(hostBootInterfaceUefiDevicePath)
+		result = append(result, bootIface)
 	}
 
 	return result, nil

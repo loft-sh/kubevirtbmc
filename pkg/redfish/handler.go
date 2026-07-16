@@ -163,7 +163,23 @@ func (h *handler) GetManager() (*server.ManagerV1190Manager, error) {
 		return nil, fmt.Errorf("manager is not a *resourcemanager.ManagerAdapter (got %T)", manager)
 	}
 
-	return adapter.Manager(), nil
+	mgr := adapter.Manager()
+
+	// A host reports the iLO firmware version and Oem.Hpe.VirtualNICEnabled that
+	// nico's HPE client reads: lockdown_status treats the BMC as "fully disabled"
+	// only when VirtualNICEnabled is true (together with Bios UsbBoot "Enabled"),
+	// which keeps HostInit out of the WaitingForLockdown detour. A DPU manager is
+	// left untouched.
+	if !h.rm.IsDPU() {
+		mgr.FirmwareVersion = util.Ptr(hostManagerFirmwareVersion)
+		mgr.Oem = map[string]interface{}{
+			"Hpe": map[string]interface{}{
+				"VirtualNICEnabled": true,
+			},
+		}
+	}
+
+	return mgr, nil
 }
 
 func (h *handler) GetVirtualMediaCollection() *server.VirtualMediaCollectionVirtualMediaCollection {
@@ -238,7 +254,19 @@ func (h *handler) GetComputerSystem() (*server.ComputerSystemV1220ComputerSystem
 		return nil, fmt.Errorf("computerSystem is not a *resourcemanager.ComputerSystemAdapter (got %T)", computerSystem)
 	}
 
-	return adapter.ComputerSystem(), nil
+	cs := adapter.ComputerSystem()
+
+	// A host advertises its boot order so nico's CheckBootOrder gate passes:
+	// BootOrder[0] must equal the BootOptionReference of the HTTP/IPv4 boot option
+	// for the boot NIC. The reorder nico issues (PATCH Systems/1) is a no-op here,
+	// so BootOrder[0] must already be that reference.
+	if !h.rm.IsDPU() {
+		if _, ok := h.rm.HostBootMAC(); ok {
+			cs.Boot.BootOrder = []*string{util.Ptr(hostBootOptionReference)}
+		}
+	}
+
+	return cs, nil
 }
 
 func (h *handler) PatchComputerSystem(computerSystemPatch *server.ComputerSystemV1220ComputerSystem) error {
@@ -691,6 +719,16 @@ const (
 	biosInternalCPUModel   = "Embedded"
 )
 
+// Host-BMC (HPE) presentation constants. hostManagerFirmwareVersion is the iLO
+// version string nico reads from the Manager; hostBootOptionId/Reference identify
+// the single HTTP/IPv4 boot option a host advertises for its boot NIC, whose
+// reference is also Boot.BootOrder[0] (see GetComputerSystem).
+const (
+	hostManagerFirmwareVersion = "iLO 6 v1.58"
+	hostBootOptionId           = "1"
+	hostBootOptionReference    = "Boot0001"
+)
+
 // GetSecureBoot reports UEFI Secure Boot as already disabled on a DPU. nico's
 // machine-controller (CheckSecureBootStatus) reads both SecureBootEnable and
 // SecureBootCurrentBoot; if either is absent it treats the response as the known
@@ -720,19 +758,41 @@ func (h *handler) GetSecureBoot() (*server.SecureBootV111SecureBoot, error) {
 // already-applied values; the writes that would set them (Bios/Settings) are
 // accepted as no-ops. Only a DPU serves this.
 func (h *handler) GetBios() (*server.BiosV122Bios, error) {
-	if !h.rm.IsDPU() {
-		return nil, fmt.Errorf("bios not supported")
+	if h.rm.IsDPU() {
+		return &server.BiosV122Bios{
+			OdataContext: "/redfish/v1/$metadata#Bios.Bios",
+			OdataId:      fmt.Sprintf("/redfish/v1/Systems/%s/Bios", bluefieldComputerSystemId),
+			OdataType:    "#Bios.v1_2_2.Bios",
+			Id:           dpuBiosID,
+			Name:         "BIOS Configuration",
+			Attributes: map[string]interface{}{
+				"HostPrivilegeLevel": biosHostPrivilegeLevel,
+				"InternalCPUModel":   biosInternalCPUModel,
+			},
+		}, nil
 	}
 
+	// Host BIOS attributes nico's HPE client verifies during HostInit, all read
+	// back exactly as served (the writes that would set them, PATCH
+	// Systems/1/Bios/settings, are accepted as no-ops):
+	//   - UsbBoot "Enabled": with Manager Oem.Hpe.VirtualNICEnabled true, makes
+	//     lockdown_status read as "fully disabled".
+	//   - ProcVirtualization/Dhcpv4/HttpSupport: the PollingBiosSetup exact-match
+	//     gate (get_virt_enabled needs one of IntelProcVtd/ProcAmdIoVt/
+	//     ProcVirtualization == "Enabled"; Dhcpv4 == "Enabled"; HttpSupport ==
+	//     "Auto").
+	// No Actions block is served, so nico's UEFI-password step no-ops cleanly.
 	return &server.BiosV122Bios{
 		OdataContext: "/redfish/v1/$metadata#Bios.Bios",
-		OdataId:      fmt.Sprintf("/redfish/v1/Systems/%s/Bios", bluefieldComputerSystemId),
+		OdataId:      fmt.Sprintf("/redfish/v1/Systems/%s/Bios", defaultComputerSystemId),
 		OdataType:    "#Bios.v1_2_2.Bios",
 		Id:           dpuBiosID,
 		Name:         "BIOS Configuration",
 		Attributes: map[string]interface{}{
-			"HostPrivilegeLevel": biosHostPrivilegeLevel,
-			"InternalCPUModel":   biosInternalCPUModel,
+			"UsbBoot":            "Enabled",
+			"ProcVirtualization": "Enabled",
+			"Dhcpv4":             "Enabled",
+			"HttpSupport":        "Auto",
 		},
 	}, nil
 }
@@ -753,6 +813,117 @@ func (h *handler) HandleDPUConfigNoop(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// GetManagerNetworkProtocol reports IPMI-over-LAN as already enabled so nico's
+// HostInit EnableIpmiOverLan step (which reads only IPMI.ProtocolEnabled) skips
+// its enable PATCH. This is the endpoint the host BMC previously 501'd on,
+// stalling the host at EnableIpmiOverLan.
+func (h *handler) GetManagerNetworkProtocol(managerID string) *server.ManagerNetworkProtocolV1100ManagerNetworkProtocol {
+	return &server.ManagerNetworkProtocolV1100ManagerNetworkProtocol{
+		OdataContext: "/redfish/v1/$metadata#ManagerNetworkProtocol.ManagerNetworkProtocol",
+		OdataId:      fmt.Sprintf("/redfish/v1/Managers/%s/NetworkProtocol", managerID),
+		OdataType:    "#ManagerNetworkProtocol.v1_10_0.ManagerNetworkProtocol",
+		Id:           "NetworkProtocol",
+		Name:         "Manager Network Protocol",
+		IPMI: server.ManagerNetworkProtocolV1100Protocol{
+			ProtocolEnabled: util.Ptr(true),
+		},
+	}
+}
+
+// GetBootOptionCollection lists the host's single HTTP/IPv4 boot option. nico's
+// SetBootOrder scans the members for a DisplayName containing HTTP + IPV4 + the
+// boot NIC MAC. Host-only, and only when the boot MAC is known; a DPU never reads
+// boot options. Members must serialize as an empty array, not null.
+func (h *handler) GetBootOptionCollection() (*server.BootOptionCollectionBootOptionCollection, error) {
+	if h.rm.IsDPU() {
+		return nil, fmt.Errorf("boot options not supported")
+	}
+
+	members := []server.OdataV4IdRef{}
+	if _, ok := h.rm.HostBootMAC(); ok {
+		members = append(members, server.OdataV4IdRef{
+			OdataId: fmt.Sprintf("/redfish/v1/Systems/%s/BootOptions/%s", defaultComputerSystemId, hostBootOptionId),
+		})
+	}
+
+	return &server.BootOptionCollectionBootOptionCollection{
+		OdataContext:      "/redfish/v1/$metadata#BootOptionCollection.BootOptionCollection",
+		OdataId:           fmt.Sprintf("/redfish/v1/Systems/%s/BootOptions", defaultComputerSystemId),
+		OdataType:         "#BootOptionCollection.BootOptionCollection",
+		Name:              "Boot Option Collection",
+		Members:           members,
+		MembersodataCount: int64(len(members)),
+	}, nil
+}
+
+// GetBootOption returns the host's HTTP/IPv4 boot option for the boot NIC. Its
+// DisplayName carries HTTP, IPV4 and the uppercased, colon-separated boot MAC so
+// nico's SetBootOrder matches it, and its BootOptionReference equals
+// Boot.BootOrder[0] so CheckBootOrder passes. Host-only.
+func (h *handler) GetBootOption(optionID string) (*server.BootOptionV105BootOption, error) {
+	mac, ok := h.rm.HostBootMAC()
+	if h.rm.IsDPU() || !ok || optionID != hostBootOptionId {
+		return nil, fmt.Errorf("boot option not found: %s", optionID)
+	}
+
+	displayName := fmt.Sprintf("Boot NIC %s (HTTP(S) IPv4)", strings.ToUpper(mac))
+	return &server.BootOptionV105BootOption{
+		OdataContext:        "/redfish/v1/$metadata#BootOption.BootOption",
+		OdataId:             fmt.Sprintf("/redfish/v1/Systems/%s/BootOptions/%s", defaultComputerSystemId, optionID),
+		OdataType:           "#BootOption.v1_0_5.BootOption",
+		Id:                  optionID,
+		Name:                "Boot Option",
+		BootOptionReference: util.Ptr(hostBootOptionReference),
+		BootOptionEnabled:   util.Ptr(true),
+		DisplayName:         util.Ptr(displayName),
+	}, nil
+}
+
+// HandleHostConfigNoop accepts the HPE BIOS/boot mutations nico issues during
+// HostInit as no-ops (204): the machine_setup BIOS writes (PATCH
+// Systems/<id>/Bios/settings and .../settings/ — serial console, TPM clear,
+// virtualization, UEFI HTTP NIC boot) and the boot-order write (PATCH
+// Systems/<id>/Bios/oem/hpe/boot/settings/). The shim models no real BIOS and
+// serves the applied values statically, so there is nothing to persist. HPE uses
+// lowercase, trailing-slash paths with no generated route, so these are
+// registered directly in the emulator. A DPU BMC never receives them.
+func (h *handler) HandleHostConfigNoop(w http.ResponseWriter, r *http.Request) {
+	if h.rm.IsDPU() {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// HandleHostBiosOemBoot serves the HPE proprietary boot-order resource nico reads
+// while assembling the machine_setup reorder (GET Systems/<id>/Bios/oem/hpe/boot/).
+// The three arrays must serialize as [] not null or the client rejects the body;
+// their content is irrelevant to the gates (the reorder PATCH is a no-op), so
+// they are served empty. No generated route exists for this path, so it is
+// registered directly in the emulator. Host-only.
+func (h *handler) HandleHostBiosOemBoot(w http.ResponseWriter, r *http.Request) {
+	if h.rm.IsDPU() {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+
+	body := map[string]interface{}{
+		"@odata.id":                 fmt.Sprintf("/redfish/v1/Systems/%s/Bios/oem/hpe/boot/", defaultComputerSystemId),
+		"@odata.type":               "#HpeServerBootSettings.v2_0_0.HpeServerBootSettings",
+		"Id":                        "boot",
+		"Name":                      "Boot Order Current Settings",
+		"PersistentBootConfigOrder": []string{},
+		"BootSources":               []interface{}{},
+		"DefaultBootOrder":          []string{},
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(body); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 }
 
 func (h *handler) GetManagerEthernetInterfaceCollection(managerID string) *server.EthernetInterfaceCollectionEthernetInterfaceCollection {

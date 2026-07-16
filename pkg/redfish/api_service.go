@@ -31534,13 +31534,7 @@ func (s *APIService) RedfishV1ManagersManagerIdNetworkProtocolGet(ctx context.Co
 	// TODO - update RedfishV1ManagersManagerIdNetworkProtocolGet with the required logic for this service method.
 	// Add api_default_service.go to the .openapi-generator-ignore to avoid overwriting this service implementation when updating open api generation.
 
-	// TODO: Uncomment the next line to return response Response(200, ManagerNetworkProtocolV1100ManagerNetworkProtocol{}) or use other options such as http.Ok ...
-	// return Response(200, ManagerNetworkProtocolV1100ManagerNetworkProtocol{}), nil
-
-	// TODO: Uncomment the next line to return response Response(0, RedfishError{}) or use other options such as http.Ok ...
-	// return Response(0, RedfishError{}), nil
-
-	return server.Response(http.StatusNotImplemented, nil), errors.New("RedfishV1ManagersManagerIdNetworkProtocolGet method not implemented")
+	return server.Response(200, sanitize(s.handler.GetManagerNetworkProtocol(managerId))), nil
 }
 
 // RedfishV1ManagersManagerIdNetworkProtocolPut -
@@ -31568,19 +31562,9 @@ func (s *APIService) RedfishV1ManagersManagerIdNetworkProtocolPatch(ctx context.
 	// TODO - update RedfishV1ManagersManagerIdNetworkProtocolPatch with the required logic for this service method.
 	// Add api_default_service.go to the .openapi-generator-ignore to avoid overwriting this service implementation when updating open api generation.
 
-	// TODO: Uncomment the next line to return response Response(200, ManagerNetworkProtocolV1100ManagerNetworkProtocol{}) or use other options such as http.Ok ...
-	// return Response(200, ManagerNetworkProtocolV1100ManagerNetworkProtocol{}), nil
-
-	// TODO: Uncomment the next line to return response Response(202, TaskV173Task{}) or use other options such as http.Ok ...
-	// return Response(202, TaskV173Task{}), nil
-
-	// TODO: Uncomment the next line to return response Response(204, {}) or use other options such as http.Ok ...
-	// return Response(204, nil),nil
-
-	// TODO: Uncomment the next line to return response Response(0, RedfishError{}) or use other options such as http.Ok ...
-	// return Response(0, RedfishError{}), nil
-
-	return server.Response(http.StatusNotImplemented, nil), errors.New("RedfishV1ManagersManagerIdNetworkProtocolPatch method not implemented")
+	// The shim reports IPMI-over-LAN as already enabled, so nico normally skips
+	// this PATCH; accept it as a no-op regardless.
+	return server.Response(http.StatusNoContent, nil), nil
 }
 
 // RedfishV1ManagersManagerIdNetworkProtocolHTTPSCertificatesGet -
@@ -60143,13 +60127,12 @@ func (s *APIService) RedfishV1SystemsComputerSystemIdBootOptionsGet(ctx context.
 	// TODO - update RedfishV1SystemsComputerSystemIdBootOptionsGet with the required logic for this service method.
 	// Add api_default_service.go to the .openapi-generator-ignore to avoid overwriting this service implementation when updating open api generation.
 
-	// TODO: Uncomment the next line to return response Response(200, BootOptionCollectionBootOptionCollection{}) or use other options such as http.Ok ...
-	// return Response(200, BootOptionCollectionBootOptionCollection{}), nil
+	collection, err := s.handler.GetBootOptionCollection()
+	if err != nil {
+		return server.Response(http.StatusNotFound, nil), err
+	}
 
-	// TODO: Uncomment the next line to return response Response(0, RedfishError{}) or use other options such as http.Ok ...
-	// return Response(0, RedfishError{}), nil
-
-	return server.Response(http.StatusNotImplemented, nil), errors.New("RedfishV1SystemsComputerSystemIdBootOptionsGet method not implemented")
+	return server.Response(200, sanitize(collection)), nil
 }
 
 // RedfishV1SystemsComputerSystemIdBootOptionsPost -
@@ -60177,13 +60160,12 @@ func (s *APIService) RedfishV1SystemsComputerSystemIdBootOptionsBootOptionIdGet(
 	// TODO - update RedfishV1SystemsComputerSystemIdBootOptionsBootOptionIdGet with the required logic for this service method.
 	// Add api_default_service.go to the .openapi-generator-ignore to avoid overwriting this service implementation when updating open api generation.
 
-	// TODO: Uncomment the next line to return response Response(200, BootOptionV105BootOption{}) or use other options such as http.Ok ...
-	// return Response(200, BootOptionV105BootOption{}), nil
+	option, err := s.handler.GetBootOption(bootOptionId)
+	if err != nil {
+		return server.Response(http.StatusNotFound, nil), err
+	}
 
-	// TODO: Uncomment the next line to return response Response(0, RedfishError{}) or use other options such as http.Ok ...
-	// return Response(0, RedfishError{}), nil
-
-	return server.Response(http.StatusNotImplemented, nil), errors.New("RedfishV1SystemsComputerSystemIdBootOptionsBootOptionIdGet method not implemented")
+	return server.Response(200, sanitize(option)), nil
 }
 
 // RedfishV1SystemsComputerSystemIdBootOptionsBootOptionIdPut -

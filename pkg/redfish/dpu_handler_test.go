@@ -290,10 +290,17 @@ func TestGetBios(t *testing.T) {
 	assert.Equal(t, "Restricted", bios.Attributes["HostPrivilegeLevel"])
 	assert.Equal(t, "Embedded", bios.Attributes["InternalCPUModel"])
 
-	// A non-DPU does not serve BIOS.
+	// A host serves the HPE BIOS attributes nico's HostInit gates read: UsbBoot
+	// "Enabled" (lockdown), and the virt/DHCP/HTTP keys the PollingBiosSetup
+	// exact-match verifies.
 	mockRM.EXPECT().IsDPU().Return(false)
-	_, err = h.GetBios()
-	assert.Error(t, err)
+	hostBios, err := h.GetBios()
+	assert.NoError(t, err)
+	assert.Equal(t, "Enabled", hostBios.Attributes["UsbBoot"])
+	assert.Equal(t, "Enabled", hostBios.Attributes["ProcVirtualization"])
+	assert.Equal(t, "Enabled", hostBios.Attributes["Dhcpv4"])
+	assert.Equal(t, "Auto", hostBios.Attributes["HttpSupport"])
+	assert.Equal(t, "/redfish/v1/Systems/1/Bios", hostBios.OdataId)
 }
 
 func TestHandleDPUConfigNoop(t *testing.T) {

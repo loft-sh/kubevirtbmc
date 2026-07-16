@@ -30,4 +30,9 @@ type ResourceManager interface {
 	BMCFirmwareVersion() (version string, ok bool)
 	CECFirmwareVersion() (version string, ok bool)
 	NICFirmwareVersion() (version string, ok bool)
+	// HostBootMAC is the MAC of the host's boot NIC. nico resolves the boot
+	// interface MAC (from its own record or the served EthernetInterface) and
+	// requires a matching HTTP/IPv4 BootOption; the shim reports it so the boot
+	// option and boot order line up.
+	HostBootMAC() (mac string, ok bool)
 }

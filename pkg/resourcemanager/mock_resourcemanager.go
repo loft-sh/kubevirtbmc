@@ -300,3 +300,18 @@ func (mr *MockResourceManagerMockRecorder) NICFirmwareVersion() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NICFirmwareVersion", reflect.TypeOf((*MockResourceManager)(nil).NICFirmwareVersion))
 }
+
+// HostBootMAC mocks base method.
+func (m *MockResourceManager) HostBootMAC() (string, bool) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "HostBootMAC")
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(bool)
+	return ret0, ret1
+}
+
+// HostBootMAC indicates an expected call of HostBootMAC.
+func (mr *MockResourceManagerMockRecorder) HostBootMAC() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HostBootMAC", reflect.TypeOf((*MockResourceManager)(nil).HostBootMAC))
+}

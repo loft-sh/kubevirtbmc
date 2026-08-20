@@ -88,7 +88,7 @@ func TestGetManager_UninitializedErrors(t *testing.T) {
 // The reported clock must be UTC with a matching offset, otherwise a client
 // comparing timestamps reads the offset as drift.
 func TestNewManager_ReportsUTC(t *testing.T) {
-	adapter := NewManager("BMC", "Manager")
+	adapter := NewManager("BMC", "Manager", "00000000-0000-0000-0000-000000000000")
 	mgr := adapter.Manager()
 
 	require.NotNil(t, mgr.DateTime)

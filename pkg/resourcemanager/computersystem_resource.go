@@ -21,7 +21,11 @@ type ComputerSystemAdapter struct {
 	computerSystem *server.ComputerSystemV1220ComputerSystem
 }
 
-func NewComputerSystem(id, name, uid string, powerState server.ResourcePowerState, bootMode server.ComputerSystemV1220BootSourceOverrideMode) *ComputerSystemAdapter {
+// NewComputerSystem builds the ComputerSystem resource. serial and systemUUID
+// are both derived from the KubeVirt VM UID by the caller: they must be unique
+// per VM and stable across restarts of the agent, because clients key machines
+// on them (NICo hashes the serial into its MachineId).
+func NewComputerSystem(id, name, serial, systemUUID string, powerState server.ResourcePowerState, bootMode server.ComputerSystemV1220BootSourceOverrideMode) *ComputerSystemAdapter {
 	generatedComputerSystem := &server.ComputerSystemV1220ComputerSystem{
 		OdataContext: "/redfish/v1/$metadata#ComputerSystem.ComputerSystem",
 		OdataId:      fmt.Sprintf("/redfish/v1/Systems/%s", id),
@@ -29,13 +33,13 @@ func NewComputerSystem(id, name, uid string, powerState server.ResourcePowerStat
 		Description:  "Computer System",
 		Name:         name,
 		Id:           id,
-		UUID:         "00000000-0000-0000-0000-000000000000",
+		UUID:         systemUUID,
 		AssetTag:     util.Ptr(""),
 		IndicatorLED: server.COMPUTERSYSTEMV1220INDICATORLED_UNKNOWN,
 		Manufacturer: util.Ptr("KubeVirt"),
 		Model:        util.Ptr("KubeVirt"),
 		PartNumber:   util.Ptr(""),
-		SerialNumber: util.Ptr(uid),
+		SerialNumber: util.Ptr(serial),
 		SKU:          util.Ptr(""),
 		Status:       server.ResourceStatus{},
 		SystemType:   server.COMPUTERSYSTEMV1220SYSTEMTYPE_VIRTUAL,

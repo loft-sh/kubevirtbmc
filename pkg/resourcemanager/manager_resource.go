@@ -19,7 +19,11 @@ type ManagerAdapter struct {
 	manager *server.ManagerV1190Manager
 }
 
-func NewManager(id, name string) *ManagerAdapter {
+// NewManager builds the Manager (BMC) resource. managerUUID is derived from the
+// KubeVirt VM UID by the caller, so each VM's BMC reports a distinct, stable
+// UUID; a constant one makes every BMC in a fleet indistinguishable to clients
+// that key on it.
+func NewManager(id, name, managerUUID string) *ManagerAdapter {
 	generatedManager := &server.ManagerV1190Manager{
 		OdataContext: "/redfish/v1/$metadata#Manager.Manager",
 		OdataId:      fmt.Sprintf("/redfish/v1/Managers/%s", id),
@@ -27,7 +31,7 @@ func NewManager(id, name string) *ManagerAdapter {
 		Description:  "Manager",
 		Name:         name,
 		Id:           id,
-		UUID:         "00000000-0000-0000-0000-000000000000",
+		UUID:         managerUUID,
 		Model:        util.Ptr("KubeVirtBMC"),
 		Status:       server.ResourceStatus{},
 		ManagerType:  "BMC",

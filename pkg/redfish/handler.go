@@ -16,13 +16,22 @@ type handler struct {
 
 	bmcUser     string
 	bmcPassword string
+
+	// identity is resolved once, here, rather than on every read of
+	// ServiceRoot: it comes from the environment and cannot change without a
+	// restart.
+	identity serviceRootIdentity
 }
 
 func NewHandler(bmcUser string, bmcPassword string, resourceManager resourcemanager.ResourceManager) *handler {
+	identity := identityFromEnv()
+	identity.log()
+
 	return &handler{
 		rm:          resourceManager,
 		bmcUser:     bmcUser,
 		bmcPassword: bmcPassword,
+		identity:    identity,
 	}
 }
 
@@ -131,7 +140,7 @@ func (h *handler) GetSessionCollection() *server.SessionCollectionSessionCollect
 }
 
 func (h *handler) GetServiceRoot() *server.ServiceRootV1161ServiceRoot {
-	return &server.ServiceRootV1161ServiceRoot{
+	serviceRoot := &server.ServiceRootV1161ServiceRoot{
 		OdataContext: "/redfish/v1/$metadata#ServiceRoot.ServiceRoot",
 		OdataId:      "/redfish/v1",
 		OdataType:    "#ServiceRoot.v1_16_1.ServiceRoot",
@@ -143,6 +152,12 @@ func (h *handler) GetServiceRoot() *server.ServiceRootV1161ServiceRoot {
 		Name:           "ServiceRoot",
 		RedfishVersion: "1.16.1",
 		UUID:           util.Ptr("00000000-0000-0000-0000-000000000000"),
+		// Redfish makes Vendor optional, but clients gate on it: NICo's
+		// site-explorer refuses a ServiceRoot that reports no recognized
+		// vendor, and it reads Vendor first, falling back to the first Oem key.
+		// Reporting Vendor is the direct answer, so Oem is left alone rather
+		// than made into a second, potentially conflicting signal.
+		Vendor: util.Ptr(h.identity.vendor),
 		Chassis: server.OdataV4IdRef{
 			OdataId: "/redfish/v1/Chassis",
 		},
@@ -187,6 +202,15 @@ func (h *handler) GetServiceRoot() *server.ServiceRootV1161ServiceRoot {
 			},
 		},
 	}
+
+	// Left absent unless configured. Redfish reads an absent property as "not
+	// reported"; an empty string would instead assert a product whose name is
+	// blank.
+	if h.identity.product != "" {
+		serviceRoot.Product = util.Ptr(h.identity.product)
+	}
+
+	return serviceRoot
 }
 
 func (h *handler) GetManagerCollection() *server.ManagerCollectionManagerCollection {

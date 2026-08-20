@@ -66380,16 +66380,7 @@ func (s *APIService) RedfishV1SystemsComputerSystemIdSimpleStorageSimpleStorageI
 
 // RedfishV1SystemsComputerSystemIdStorageGet -
 func (s *APIService) RedfishV1SystemsComputerSystemIdStorageGet(ctx context.Context, computerSystemId string) (server.ImplResponse, error) {
-	// TODO - update RedfishV1SystemsComputerSystemIdStorageGet with the required logic for this service method.
-	// Add api_default_service.go to the .openapi-generator-ignore to avoid overwriting this service implementation when updating open api generation.
-
-	// TODO: Uncomment the next line to return response Response(200, StorageCollectionStorageCollection{}) or use other options such as http.Ok ...
-	// return Response(200, StorageCollectionStorageCollection{}), nil
-
-	// TODO: Uncomment the next line to return response Response(0, RedfishError{}) or use other options such as http.Ok ...
-	// return Response(0, RedfishError{}), nil
-
-	return server.Response(http.StatusNotImplemented, nil), errors.New("RedfishV1SystemsComputerSystemIdStorageGet method not implemented")
+	return server.Response(200, s.handler.GetStorageCollection(computerSystemId)), nil
 }
 
 // RedfishV1SystemsComputerSystemIdStorageStorageIdGet -
@@ -71384,16 +71375,7 @@ func (s *APIService) RedfishV1SystemsSystemIdFabricAdaptersFabricAdapterIdRSPVCA
 
 // RedfishV1TaskServiceGet -
 func (s *APIService) RedfishV1TaskServiceGet(ctx context.Context) (server.ImplResponse, error) {
-	// TODO - update RedfishV1TaskServiceGet with the required logic for this service method.
-	// Add api_default_service.go to the .openapi-generator-ignore to avoid overwriting this service implementation when updating open api generation.
-
-	// TODO: Uncomment the next line to return response Response(200, TaskServiceV120TaskService{}) or use other options such as http.Ok ...
-	// return Response(200, TaskServiceV120TaskService{}), nil
-
-	// TODO: Uncomment the next line to return response Response(0, RedfishError{}) or use other options such as http.Ok ...
-	// return Response(0, RedfishError{}), nil
-
-	return server.Response(http.StatusNotImplemented, nil), errors.New("RedfishV1TaskServiceGet method not implemented")
+	return server.Response(200, s.handler.GetTaskService()), nil
 }
 
 // RedfishV1TaskServicePut -
@@ -71438,16 +71420,7 @@ func (s *APIService) RedfishV1TaskServicePatch(ctx context.Context, taskServiceV
 
 // RedfishV1TaskServiceTasksGet -
 func (s *APIService) RedfishV1TaskServiceTasksGet(ctx context.Context) (server.ImplResponse, error) {
-	// TODO - update RedfishV1TaskServiceTasksGet with the required logic for this service method.
-	// Add api_default_service.go to the .openapi-generator-ignore to avoid overwriting this service implementation when updating open api generation.
-
-	// TODO: Uncomment the next line to return response Response(200, TaskCollectionTaskCollection{}) or use other options such as http.Ok ...
-	// return Response(200, TaskCollectionTaskCollection{}), nil
-
-	// TODO: Uncomment the next line to return response Response(0, RedfishError{}) or use other options such as http.Ok ...
-	// return Response(0, RedfishError{}), nil
-
-	return server.Response(http.StatusNotImplemented, nil), errors.New("RedfishV1TaskServiceTasksGet method not implemented")
+	return server.Response(200, s.handler.GetTaskCollection()), nil
 }
 
 // RedfishV1TaskServiceTasksTaskIdGet -

@@ -78,3 +78,11 @@ func (i serviceRootIdentity) log() {
 	}
 	entry.Info("ServiceRoot identity resolved")
 }
+
+// isDell reports whether the BMC is claiming to be a Dell, and so whether the
+// Dell OEM surface should be served. Compared case-insensitively: a client that
+// gates on the vendor may lowercase it, and the OEM surface should follow the
+// claim either way rather than depending on how it was capitalized.
+func (i serviceRootIdentity) isDell() bool {
+	return strings.EqualFold(i.vendor, "Dell")
+}

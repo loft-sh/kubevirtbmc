@@ -8,6 +8,17 @@ import (
 	"kubevirt.io/kubevirtbmc/pkg/util"
 )
 
+// DefaultManagerId is the id of the single Manager virtbmc serves. It is
+// exported because OEM routes are built from it: the Dell attributes URI is
+// derived from the Manager's id rather than being a fixed path.
+const DefaultManagerId = "BMC"
+
+// SerialNumberEnvVar names the environment variable that overrides the
+// ComputerSystem serial number. Left unset, the serial is derived from the
+// KubeVirt VM UID, which is unique and stable but cannot match a serial the
+// consuming inventory was seeded with.
+const SerialNumberEnvVar = "BMC_SERIAL_NUMBER"
+
 type ManagerInterface interface {
 	OdataInterface
 
@@ -49,7 +60,7 @@ func NewManager(id, name, managerUUID string) *ManagerAdapter {
 				Title:  "Reset",
 			},
 		},
-		DateTime:            util.Ptr(time.Now().UTC()),
+		DateTime:            util.Ptr(formatBMCDateTime(time.Now())),
 		DateTimeLocalOffset: util.Ptr("+00:00"),
 		EthernetInterfaces: server.OdataV4IdRef{
 			OdataId: fmt.Sprintf("/redfish/v1/Managers/%s/EthernetInterfaces", id),
@@ -63,6 +74,7 @@ func NewManager(id, name, managerUUID string) *ManagerAdapter {
 		VirtualMedia: server.OdataV4IdRef{
 			OdataId: fmt.Sprintf("/redfish/v1/Managers/%s/VirtualMedia", id),
 		},
+		Oem: dellOem(id),
 	}
 
 	return &ManagerAdapter{manager: generatedManager}
@@ -73,7 +85,16 @@ func NewManager(id, name, managerUUID string) *ManagerAdapter {
 // BMC reports its pod start time forever and clients that check BMC clock drift
 // (ironic, NICo) see the drift grow without bound.
 func (a *ManagerAdapter) SetDateTime(t time.Time) {
-	a.manager.DateTime = util.Ptr(t.UTC())
+	a.manager.DateTime = util.Ptr(formatBMCDateTime(t))
+}
+
+// bmcDateTimeLayout is how a BMC reports its clock: a literal `+00:00` offset
+// and whole seconds. Not RFC3339Nano, which is what encoding/json produces for
+// a time.Time and which would report `Z` and six fractional digits.
+const bmcDateTimeLayout = "2006-01-02T15:04:05+00:00"
+
+func formatBMCDateTime(t time.Time) string {
+	return t.UTC().Format(bmcDateTimeLayout)
 }
 
 func (a *ManagerAdapter) Id() string {
@@ -98,4 +119,52 @@ func (a *ManagerAdapter) ManagedBy(resource OdataInterface) error {
 
 func (a *ManagerAdapter) Manager() *server.ManagerV1190Manager {
 	return a.manager
+}
+
+// dellOem is the marker that makes a client look for Dell iDRAC attributes.
+//
+// nv-redfish issues the GET for /Oem/Dell/DellAttributes/<id> only when
+// Manager.Oem.Dell exists. It is a bare presence check on the key and nothing
+// inside is inspected, so `{"Dell": {}}` would be enough for exploration; an
+// absent key yields Ok(None), which the lockdown check then turns into a hard
+// error rather than a diff.
+//
+// The DelliDRACCard block is mandatory, not decoration, and the asymmetry
+// between the two clients is the trap: nv-redfish only checks that the `Dell`
+// key exists and never looks inside, while libredfish never checks for the key
+// but fully deserializes what is there, into a struct whose every field is a
+// bare String rather than an Option. So `{"Dell": {}}` passes exploration and
+// then fails libredfish's get_manager().
+//
+// That is reachable rather than theoretical: get_manager() backs the BMC
+// time-sync check that runs every preingestion tick, and failing that check is
+// the entry point to the power-off / BMC-reset / wait remediation sequence. A
+// half-populated block here would reintroduce that loop by a different route.
+//
+// Every value must therefore be present and non-empty. None is dereferenced,
+// and the two timestamps are typed as strings rather than parsed, so the
+// reference's literal values are fine to carry as-is.
+func dellOem(managerID string) map[string]interface{} {
+	return map[string]interface{}{
+		"Dell": map[string]interface{}{
+			"DelliDRACCard": map[string]interface{}{
+				"@odata.context": "/redfish/v1/$metadata#DelliDRACCard.DelliDRACCard",
+				"@odata.id": fmt.Sprintf(
+					"/redfish/v1/Managers/%s/Oem/Dell/DelliDRACCard/%s-1_0x23_IDRACinfo",
+					managerID, managerID,
+				),
+				"@odata.type":             "#DelliDRACCard.v1_1_0.DelliDRACCard",
+				"Description":             "An instance of DelliDRACCard will have data specific to the Integrated Dell Remote Access Controller (iDRAC) in the managed system.",
+				"IPMIVersion":             "2.0",
+				"Id":                      fmt.Sprintf("%s-1_0x23_IDRACinfo", managerID),
+				"LastSystemInventoryTime": "2026-02-20T04:38:38+00:00",
+				"LastUpdateTime":          "2026-03-06T04:44:21+00:00",
+				"Name":                    "DelliDRACCard",
+				// The BMC's own address is not known here, and nothing
+				// dereferences this. It is typed as a plain string, so it only
+				// has to be present and non-empty.
+				"URLString": "https://0.0.0.0:443",
+			},
+		},
+	}
 }

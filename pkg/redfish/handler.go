@@ -532,3 +532,61 @@ func (h *handler) GetManagerEthernetInterface(managerID, interfaceID string) (*s
 
 	return nil, fmt.Errorf("ethernet interface not found: %s", interfaceID)
 }
+
+// GetTaskService serves the task service.
+//
+// virtbmc runs no long-running Redfish tasks, but the service and its
+// collection still have to exist. A client that resets the BMC polls
+// TaskService/Tasks as a liveness check and treats any error, a 404 included,
+// as "the BMC is not back yet", so a missing collection leaves the host
+// powered off indefinitely rather than merely looking untidy.
+func (h *handler) GetTaskService() *server.TaskServiceV120TaskService {
+	return &server.TaskServiceV120TaskService{
+		OdataContext:   "/redfish/v1/$metadata#TaskService.TaskService",
+		OdataId:        "/redfish/v1/TaskService",
+		OdataType:      "#TaskService.v1_2_0.TaskService",
+		Id:             "TaskService",
+		Name:           "Task Service",
+		Description:    "Task Service",
+		ServiceEnabled: util.Ptr(true),
+		Status: server.ResourceStatus{
+			Health: util.Ptr(server.RESOURCEHEALTH_OK),
+			State:  util.Ptr(server.RESOURCESTATE_ENABLED),
+		},
+		Tasks: server.OdataV4IdRef{
+			OdataId: "/redfish/v1/TaskService/Tasks",
+		},
+	}
+}
+
+// GetTaskCollection serves an empty task collection. Members and the count
+// must both be present: "no tasks" is a real answer and has to be
+// distinguishable from a broken endpoint.
+func (h *handler) GetTaskCollection() *server.TaskCollectionTaskCollection {
+	return &server.TaskCollectionTaskCollection{
+		OdataContext:      "/redfish/v1/$metadata#TaskCollection.TaskCollection",
+		OdataId:           "/redfish/v1/TaskService/Tasks",
+		OdataType:         "#TaskCollection.TaskCollection",
+		Name:              "Task Collection",
+		Description:       "Task Collection",
+		Members:           []server.OdataV4IdRef{},
+		MembersodataCount: 0,
+	}
+}
+
+// GetStorageCollection serves an empty storage collection for a system.
+//
+// A Dell host gets looked up here for a BOSS controller. virtbmc has no
+// storage controllers to report, but the collection must exist: NVIDIA's own
+// mock adds it for exactly this reason, to avoid the 404.
+func (h *handler) GetStorageCollection(computerSystemID string) *server.StorageCollectionStorageCollection {
+	return &server.StorageCollectionStorageCollection{
+		OdataContext:      "/redfish/v1/$metadata#StorageCollection.StorageCollection",
+		OdataId:           fmt.Sprintf("/redfish/v1/Systems/%s/Storage", computerSystemID),
+		OdataType:         "#StorageCollection.StorageCollection",
+		Name:              "Storage Collection",
+		Description:       "Storage Collection",
+		Members:           []server.OdataV4IdRef{},
+		MembersodataCount: 0,
+	}
+}

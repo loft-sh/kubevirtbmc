@@ -3,6 +3,7 @@ package resourcemanager
 import (
 	"context"
 	"fmt"
+	"os"
 	"slices"
 	"strings"
 	"time"
@@ -21,7 +22,7 @@ import (
 
 const (
 	defaultComputerSystemId = "1"
-	defaultManagerId        = "BMC"
+	defaultManagerId        = DefaultManagerId
 	defaultManagerName      = "Manager"
 	defaultVirtualMediaId   = "CD1"
 	defaultVirtualMediaName = "Virtual Media"
@@ -114,6 +115,16 @@ func (m *VirtualMachineResourceManager) Initialize(namespace, name string) error
 
 	// Strip dashes from the UUID to fit the 32-char serial limit imposed by some databases (NICo)
 	serial := strings.ReplaceAll(string(vm.UID), "-", "")
+
+	// The serial is the only machine-identity source a client has for a host,
+	// so it has to be both non-empty and the value the inventory was seeded
+	// with. A non-empty serial that does not match creates the machine and then
+	// flags it as un-allocatable, which is harder to diagnose than an outright
+	// failure. The VM UID keeps it non-empty by default, but it cannot match a
+	// seeded serial, so allow the deployment to supply the real one.
+	if configured := strings.TrimSpace(os.Getenv(SerialNumberEnvVar)); configured != "" {
+		serial = configured
+	}
 
 	systemUUID, managerUUID := resourceUUIDs(vm)
 

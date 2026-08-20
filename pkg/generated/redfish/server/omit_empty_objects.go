@@ -34,11 +34,15 @@ import (
 // numbers are left alone: an empty collection legitimately serves
 // `"Members":[]` alongside `"Members@odata.count":0`, and both have to survive.
 //
-// A parent that ends up empty because every one of its properties was dropped
-// is kept as `{}` rather than being removed in turn. Those parents are complex
-// types, not references, so `{}` deserializes fine, whereas collapsing upwards
-// would delete properties that real BMCs do emit and that a client may require
-// to be present.
+// Pruning is bottom-up: a parent left empty because every one of its
+// properties was dropped is dropped in turn. An empty object is never a useful
+// answer in Redfish. It is fatal where a reference is expected, and where a
+// complex type is expected it is at best noise and at worst the same trap:
+// System.SerialConsole is rejected unless it carries its SSH and IPMI
+// sub-objects, and ProtocolFeaturesSupported must be absent rather than empty
+// so that clients do not enable $expand against a service that cannot serve
+// it. Omitting the property says "not supported", which is both true and what
+// Redfish means.
 func omitEmptyObjects(v any) (any, error) {
 	raw, err := json.Marshal(v)
 	if err != nil {
@@ -68,17 +72,16 @@ func omitEmptyObjects(v any) (any, error) {
 	return object, nil
 }
 
-// dropEmptyObjects removes the empty-object properties of object, and recurses
-// into the properties it keeps.
+// dropEmptyObjects removes the empty-object properties of object, recursing
+// first so that a property left empty by its own pruning is removed too.
 func dropEmptyObjects(object map[string]any) {
 	for name, value := range object {
 		switch typed := value.(type) {
 		case map[string]any:
+			dropEmptyObjects(typed)
 			if len(typed) == 0 {
 				delete(object, name)
-				continue
 			}
-			dropEmptyObjects(typed)
 		case []any:
 			dropEmptyObjectsInArray(typed)
 		}

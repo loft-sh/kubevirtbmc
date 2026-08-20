@@ -87,9 +87,10 @@ func TestEncodeJSONResponse_DropsNestedAndKeepsMemberCount(t *testing.T) {
 		Members: []member{{OdataId: "/redfish/v1/Systems/1"}},
 	})
 
-	// Links empties out and is kept as {}: it is a complex type, not a
-	// reference, so it has no mandatory @odata.id.
-	want := `{"Links":{},"Members":[{"@odata.id":"/redfish/v1/Systems/1"}]}` + "\n"
+	// Links empties out once its only property is dropped, so it goes too.
+	// Pruning is bottom-up: an object that ends up empty is never a useful
+	// answer, and for some properties an empty object is itself rejected.
+	want := `{"Members":[{"@odata.id":"/redfish/v1/Systems/1"}]}` + "\n"
 	if body != want {
 		t.Fatalf("got %s want %s", body, want)
 	}
@@ -119,7 +120,7 @@ func TestEncodeJSONResponse_NilWritesNothing(t *testing.T) {
 }
 
 // omitEmptyObjects must not corrupt a payload it does not understand; anything
-// it returns has to remain valid JSON.
+// it returns has to remain valid JSON, including when everything prunes away.
 func TestOmitEmptyObjects_ReturnsValidJSON(t *testing.T) {
 	pruned, err := omitEmptyObjects(map[string]any{
 		"Empty":  map[string]any{},
@@ -134,7 +135,8 @@ func TestOmitEmptyObjects_ReturnsValidJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	want := `{"Nested":{"Deep":{}}}`
+	// Collapses all the way up: Deep empties, so Nested empties, so both go.
+	want := `{}`
 	if string(raw) != want {
 		t.Fatalf("got %s want %s", raw, want)
 	}

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/sirupsen/logrus"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -134,6 +135,17 @@ func (m *VirtualMachineResourceManager) GetComputerSystem() (ComputerSystemInter
 }
 
 func (m *VirtualMachineResourceManager) GetManager() (ManagerInterface, error) {
+	if m.manager == nil {
+		return nil, fmt.Errorf("manager not initialized")
+	}
+
+	// Refresh the reported clock just-in-time, the same way GetComputerSystem
+	// refreshes power state and boot mode. NewManager only runs once, during
+	// Initialize, so a Manager built there would otherwise report the agent's
+	// start time for the lifetime of the pod. Clients that compare their own
+	// clock against the BMC's read that as ever-growing drift.
+	m.manager.SetDateTime(time.Now())
+
 	return m.manager, nil
 }
 

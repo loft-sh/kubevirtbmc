@@ -298,3 +298,129 @@ func (h *handler) GetEthernetInterface(interfaceId string) (*server.EthernetInte
 
 	return nil, fmt.Errorf("ethernet interface not found: %s", interfaceId)
 }
+
+// GetChassisCollection returns an empty Chassis collection.
+//
+// ServiceRoot advertises /redfish/v1/Chassis, so a client that walks the
+// service tree will follow that link. Returning 501 there is fatal for clients
+// that treat "not implemented" as a hard error rather than as "unsupported"
+// (libredfish does exactly this). virtbmc fronts a VM, which has no chassis to
+// describe, so the honest answer is an empty collection rather than an error.
+func (h *handler) GetChassisCollection() *server.ChassisCollectionChassisCollection {
+	return &server.ChassisCollectionChassisCollection{
+		OdataContext:      "/redfish/v1/$metadata#ChassisCollection.ChassisCollection",
+		OdataId:           "/redfish/v1/Chassis",
+		OdataType:         "#ChassisCollection.ChassisCollection",
+		Name:              "Chassis Collection",
+		Description:       "Chassis Collection",
+		Members:           []server.OdataV4IdRef{},
+		MembersodataCount: 0,
+	}
+}
+
+// GetUpdateService returns a disabled UpdateService.
+//
+// virtbmc cannot flash firmware, but clients reach FirmwareInventory *through*
+// this resource, so leaving it at 501 makes the inventory below it
+// unreachable regardless of whether that is implemented. ServiceEnabled=false
+// tells the client the truth without erroring.
+func (h *handler) GetUpdateService() *server.UpdateServiceV1130UpdateService {
+	return &server.UpdateServiceV1130UpdateService{
+		OdataContext:   "/redfish/v1/$metadata#UpdateService.UpdateService",
+		OdataId:        "/redfish/v1/UpdateService",
+		OdataType:      "#UpdateService.v1_13_0.UpdateService",
+		Name:           "Update Service",
+		Description:    "Update Service",
+		Id:             "UpdateService",
+		ServiceEnabled: util.Ptr(false),
+		FirmwareInventory: server.OdataV4IdRef{
+			OdataId: "/redfish/v1/UpdateService/FirmwareInventory",
+		},
+		Status: server.ResourceStatus{
+			Health: util.Ptr(server.RESOURCEHEALTH_OK),
+			State:  util.Ptr(server.RESOURCESTATE_DISABLED),
+		},
+	}
+}
+
+// GetFirmwareInventory returns an empty SoftwareInventory collection. There is
+// no firmware behind a VM to enumerate; see GetChassisCollection for why this
+// is an empty 200 rather than a 501.
+func (h *handler) GetFirmwareInventory() *server.SoftwareInventoryCollectionSoftwareInventoryCollection {
+	return &server.SoftwareInventoryCollectionSoftwareInventoryCollection{
+		OdataContext:      "/redfish/v1/$metadata#SoftwareInventoryCollection.SoftwareInventoryCollection",
+		OdataId:           "/redfish/v1/UpdateService/FirmwareInventory",
+		OdataType:         "#SoftwareInventoryCollection.SoftwareInventoryCollection",
+		Name:              "Firmware Inventory Collection",
+		Description:       "Firmware Inventory Collection",
+		Members:           []server.OdataV4IdRef{},
+		MembersodataCount: 0,
+	}
+}
+
+// GetManagerEthernetInterfaceCollection serves the *Manager*-anchored NIC
+// collection at /redfish/v1/Managers/{id}/EthernetInterfaces.
+//
+// This is a different resource from the ComputerSystem-anchored one above, and
+// the Manager resource has always advertised a link to it. Clients that want
+// the BMC's own MAC (rather than the host's) walk this path, so implementing
+// only the System path leaves them with nothing. The underlying data is the
+// same set of VM interfaces; only the anchoring OdataId differs.
+func (h *handler) GetManagerEthernetInterfaceCollection(managerID string) (*server.EthernetInterfaceCollectionEthernetInterfaceCollection, error) {
+	interfaces, err := h.rm.GetEthernetInterfaces()
+	if err != nil {
+		return nil, err
+	}
+
+	base := fmt.Sprintf("/redfish/v1/Managers/%s/EthernetInterfaces", managerID)
+	members := make([]server.OdataV4IdRef, 0, len(interfaces))
+	for _, iface := range interfaces {
+		members = append(members, server.OdataV4IdRef{
+			OdataId: fmt.Sprintf("%s/%s", base, iface.Id()),
+		})
+	}
+
+	return &server.EthernetInterfaceCollectionEthernetInterfaceCollection{
+		OdataContext:      "/redfish/v1/$metadata#EthernetInterfaceCollection.EthernetInterfaceCollection",
+		OdataId:           base,
+		OdataType:         "#EthernetInterfaceCollection.EthernetInterfaceCollection",
+		Name:              "Ethernet Interface Collection",
+		Members:           members,
+		MembersodataCount: int64(len(members)),
+	}, nil
+}
+
+// GetManagerEthernetInterface serves a single Manager-anchored NIC. It rebuilds
+// the resource under the Manager OdataId so the document a client fetches is
+// self-consistent with the URL it fetched it from.
+func (h *handler) GetManagerEthernetInterface(managerID, interfaceID string) (*server.EthernetInterfaceV1120EthernetInterface, error) {
+	interfaces, err := h.rm.GetEthernetInterfaces()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, iface := range interfaces {
+		if iface.Id() != interfaceID {
+			continue
+		}
+		adapter, ok := iface.(*resourcemanager.EthernetInterfaceAdapter)
+		if !ok {
+			return nil, fmt.Errorf("ethernetInterface is not a *resourcemanager.EthernetInterfaceAdapter (got %T)", iface)
+		}
+		source := adapter.EthernetInterface()
+		enabled := false
+		if source.InterfaceEnabled != nil {
+			enabled = *source.InterfaceEnabled
+		}
+		return resourcemanager.NewManagerEthernetInterface(
+			managerID,
+			source.Id,
+			source.Name,
+			source.MACAddress,
+			enabled,
+			source.LinkStatus,
+		).EthernetInterface(), nil
+	}
+
+	return nil, fmt.Errorf("ethernet interface not found: %s", interfaceID)
+}

@@ -12,6 +12,7 @@ type ManagerInterface interface {
 	OdataInterface
 
 	Id() string
+	SetDateTime(time.Time)
 }
 
 type ManagerAdapter struct {
@@ -37,7 +38,8 @@ func NewManager(id, name string) *ManagerAdapter {
 				Title:  "Reset",
 			},
 		},
-		DateTime: util.Ptr(time.Now()),
+		DateTime:            util.Ptr(time.Now().UTC()),
+		DateTimeLocalOffset: util.Ptr("+00:00"),
 		EthernetInterfaces: server.OdataV4IdRef{
 			OdataId: fmt.Sprintf("/redfish/v1/Managers/%s/EthernetInterfaces", id),
 		},
@@ -53,6 +55,14 @@ func NewManager(id, name string) *ManagerAdapter {
 	}
 
 	return &ManagerAdapter{manager: generatedManager}
+}
+
+// SetDateTime refreshes the clock the BMC reports. It must be called on every
+// read of the Manager: NewManager runs once at Initialize, so without this the
+// BMC reports its pod start time forever and clients that check BMC clock drift
+// (ironic, NICo) see the drift grow without bound.
+func (a *ManagerAdapter) SetDateTime(t time.Time) {
+	a.manager.DateTime = util.Ptr(t.UTC())
 }
 
 func (a *ManagerAdapter) Id() string {

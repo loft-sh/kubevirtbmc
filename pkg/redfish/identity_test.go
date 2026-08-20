@@ -25,7 +25,12 @@ func TestServiceRoot_ReportsVendorByDefault(t *testing.T) {
 	vendor, ok := body["Vendor"].(string)
 	require.True(t, ok, "Vendor must be reported, got %T", body["Vendor"])
 	assert.NotEmpty(t, vendor)
-	assert.Equal(t, defaultVendor, vendor)
+
+	// Pinned deliberately. Of the eight vendors NICo accepts, Dell is the one
+	// with no vendor-specific handling in its exploration path, so changing
+	// this value changes which of NICo's code paths the demo walks.
+	assert.Equal(t, "Dell", vendor)
+	assert.Equal(t, "Dell", defaultVendor)
 }
 
 // Which vendor identity to claim is a question about the client, not about

@@ -20,14 +20,22 @@ const (
 	VendorEnvVar  = "BMC_VENDOR"
 	ProductEnvVar = "BMC_PRODUCT"
 
-	// defaultVendor is a PLACEHOLDER. Redfish leaves Vendor free-form, but
-	// clients gate on it: NVIDIA NICo's site-explorer rejects a ServiceRoot
-	// whose vendor it does not recognize ("did not report a recognized
-	// vendor"), matching the lowercased string against a fixed set, and each
-	// recognized vendor pulls in its own vendor-specific handling downstream.
-	// Which identity costs least is a question about the client, not about
-	// virtbmc, so it is settled by configuration rather than by this constant.
-	defaultVendor = "Supermicro"
+	// defaultVendor is what ServiceRoot claims when BMC_VENDOR is unset.
+	//
+	// Redfish leaves Vendor free-form, but clients gate on it: NICo's
+	// site-explorer rejects a ServiceRoot whose vendor it does not recognize
+	// ("did not report a recognized vendor"), matching the lowercased string
+	// against a fixed set of eight, and each recognized vendor pulls in its own
+	// handling further along. Dell is the one of the eight that carries no
+	// special handling in NICo's exploration path: Lenovo triggers adapter-port
+	// MAC inventory, HPE has a dedicated branch, NVIDIA maps to a DPU and drags
+	// in factory-credential logic, and LiteOn and Delta are power-shelf
+	// vendors. Dell appears in NICo's own test fixtures as an ordinary host.
+	//
+	// This is the default rather than a constant precisely because it is a
+	// claim about the client's behaviour, not about virtbmc: BMC_VENDOR
+	// overrides it without a rebuild.
+	defaultVendor = "Dell"
 )
 
 // serviceRootIdentity is what ServiceRoot reports about who made this BMC.

@@ -52,8 +52,82 @@ func (h *handler) GetSession(sessionID string) (string, string, error) {
 	return tokenInfo.ID, tokenInfo.Username, nil
 }
 
-func (h *handler) DeleteSession(sessionID string) {
-	session.RemoveToken(sessionID)
+// DeleteSession revokes a session by its ID and reports whether it existed.
+// The token store is keyed by token, so this needs RemoveSession's reverse
+// lookup: RemoveToken takes a token, and handing it a session ID deletes
+// nothing. Clients that rotate credentials (NICo) DELETE the session they
+// previously created, and a 204 that revoked nothing would leave the session
+// valid and the Sessions collection growing without bound.
+func (h *handler) DeleteSession(sessionID string) bool {
+	return session.RemoveSession(sessionID)
+}
+
+// GetSessionService serves /redfish/v1/SessionService.
+//
+// ServiceRoot advertises this resource, and "advertised but 501" is the one
+// shape a Redfish client cannot recover from. nv-redfish (which NICo's
+// nico-hardware-health and nico-bmc-proxy reach BMCs through) treats a missing
+// nav property in ServiceRoot as "no session service" and falls back to Basic
+// auth, but treats an error on a nav property that *is* advertised as a hard
+// failure with no fallback. virtbmc has always implemented session creation,
+// so the service is real; only its discovery document was missing.
+//
+// The Sessions link is mandatory rather than decorative: a SessionService
+// without it makes the client fail with "does not expose a Sessions
+// collection", which is also outside the fallback path.
+func (h *handler) GetSessionService() *server.SessionServiceV118SessionService {
+	return &server.SessionServiceV118SessionService{
+		OdataContext:   "/redfish/v1/$metadata#SessionService.SessionService",
+		OdataId:        "/redfish/v1/SessionService",
+		OdataType:      "#SessionService.v1_1_8.SessionService",
+		Id:             "SessionService",
+		Name:           "Session Service",
+		Description:    "Session Service",
+		ServiceEnabled: util.Ptr(true),
+		// virtbmc never expires a session, and Redfish has no value for
+		// "never", so this advertises the schema maximum (24h) rather than a
+		// timeout that would be enforced. Nothing in nv-redfish or NICo reads
+		// it; it is here because the field is part of the resource clients
+		// expect.
+		SessionTimeout: 86400,
+		Sessions: server.OdataV4IdRef{
+			OdataId: "/redfish/v1/SessionService/Sessions",
+		},
+		Status: server.ResourceStatus{
+			Health: util.Ptr(server.RESOURCEHEALTH_OK),
+			State:  util.Ptr(server.RESOURCESTATE_ENABLED),
+		},
+	}
+}
+
+// GetSessionCollection serves /redfish/v1/SessionService/Sessions.
+//
+// This is the second half of the SessionService fix, not an optional extra:
+// nv-redfish GETs this collection immediately after the SessionService
+// document, so leaving it at 501 moves the unrecoverable failure one hop down
+// rather than fixing it.
+//
+// Members are the live sessions, so a client that created a session can find
+// it again and revoke it.
+func (h *handler) GetSessionCollection() *server.SessionCollectionSessionCollection {
+	sessions := session.ListSessions()
+
+	members := make([]server.OdataV4IdRef, 0, len(sessions))
+	for _, s := range sessions {
+		members = append(members, server.OdataV4IdRef{
+			OdataId: fmt.Sprintf("/redfish/v1/SessionService/Sessions/%s", s.ID),
+		})
+	}
+
+	return &server.SessionCollectionSessionCollection{
+		OdataContext:      "/redfish/v1/$metadata#SessionCollection.SessionCollection",
+		OdataId:           "/redfish/v1/SessionService/Sessions",
+		OdataType:         "#SessionCollection.SessionCollection",
+		Name:              "Session Collection",
+		Description:       "Session Collection",
+		Members:           members,
+		MembersodataCount: int64(len(members)),
+	}
 }
 
 func (h *handler) GetServiceRoot() *server.ServiceRootV1161ServiceRoot {

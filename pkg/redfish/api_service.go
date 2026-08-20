@@ -53743,16 +53743,7 @@ func (s *APIService) RedfishV1ServiceConditionsGet(ctx context.Context) (server.
 
 // RedfishV1SessionServiceGet -
 func (s *APIService) RedfishV1SessionServiceGet(ctx context.Context) (server.ImplResponse, error) {
-	// TODO - update RedfishV1SessionServiceGet with the required logic for this service method.
-	// Add api_default_service.go to the .openapi-generator-ignore to avoid overwriting this service implementation when updating open api generation.
-
-	// TODO: Uncomment the next line to return response Response(200, SessionServiceV118SessionService{}) or use other options such as http.Ok ...
-	// return Response(200, SessionServiceV118SessionService{}), nil
-
-	// TODO: Uncomment the next line to return response Response(0, RedfishError{}) or use other options such as http.Ok ...
-	// return Response(0, RedfishError{}), nil
-
-	return server.Response(http.StatusNotImplemented, nil), errors.New("RedfishV1SessionServiceGet method not implemented")
+	return server.Response(200, s.handler.GetSessionService()), nil
 }
 
 // RedfishV1SessionServicePut -
@@ -53797,16 +53788,7 @@ func (s *APIService) RedfishV1SessionServicePatch(ctx context.Context, sessionSe
 
 // RedfishV1SessionServiceSessionsGet -
 func (s *APIService) RedfishV1SessionServiceSessionsGet(ctx context.Context) (server.ImplResponse, error) {
-	// TODO - update RedfishV1SessionServiceSessionsGet with the required logic for this service method.
-	// Add api_default_service.go to the .openapi-generator-ignore to avoid overwriting this service implementation when updating open api generation.
-
-	// TODO: Uncomment the next line to return response Response(200, SessionCollectionSessionCollection{}) or use other options such as http.Ok ...
-	// return Response(200, SessionCollectionSessionCollection{}), nil
-
-	// TODO: Uncomment the next line to return response Response(0, RedfishError{}) or use other options such as http.Ok ...
-	// return Response(0, RedfishError{}), nil
-
-	return server.Response(http.StatusNotImplemented, nil), errors.New("RedfishV1SessionServiceSessionsGet method not implemented")
+	return server.Response(200, s.handler.GetSessionCollection()), nil
 }
 
 // RedfishV1SessionServiceSessionsPost -
@@ -53830,7 +53812,7 @@ func (s *APIService) RedfishV1SessionServiceSessionsPost(ctx context.Context, se
 
 	return server.Response(201, server.SessionV171Session{
 		OdataType: "Session.v1_7_1.Session",
-		OdataId:   "/redfish/v1/SessionService/Sessions/1",
+		OdataId:   fmt.Sprintf("/redfish/v1/SessionService/Sessions/%s", id),
 		Id:        id,
 		Name:      "User Session",
 		Token:     &token, // The final response will not contain this field. It's just a means to pass the token to the caller.
@@ -53865,7 +53847,19 @@ func (s *APIService) RedfishV1SessionServiceSessionsSessionIdGet(ctx context.Con
 
 // RedfishV1SessionServiceSessionsSessionIdDelete -
 func (s *APIService) RedfishV1SessionServiceSessionsSessionIdDelete(ctx context.Context, sessionId string) (server.ImplResponse, error) {
-	s.handler.DeleteSession(sessionId)
+	if !s.handler.DeleteSession(sessionId) {
+		return server.Response(http.StatusNotFound, server.RedfishError{
+			Error: server.RedfishErrorError{
+				MessageExtendedInfo: []server.MessageV120Message{
+					{
+						MessageId: "Base.1.0.GeneralError",
+						Message:   "session not found",
+					},
+				},
+			},
+		}), nil
+	}
+
 	return server.Response(204, nil), nil
 }
 

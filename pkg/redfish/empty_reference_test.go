@@ -107,20 +107,26 @@ func TestServiceRoot_OmitsUnimplementedServices(t *testing.T) {
 		assert.NotContains(t, body, name, "%s is not implemented, so it must be absent rather than {}", name)
 	}
 
+	// Advertised only where the endpoint is actually served. These five used
+	// to be advertised and answered 501, which reads to a client walking the
+	// service root as a broken BMC rather than as an unsupported feature.
+	for _, name := range []string{
+		"Registries", "AccountService", "EventService",
+		"TelemetryService", "CompositionService",
+	} {
+		assert.NotContains(t, body, name, "%s answers 501, so it must not be advertised", name)
+	}
+
 	// The services that do exist keep their links; omission must not be
 	// indiscriminate.
 	implemented := map[string]string{
-		"AccountService":     "/redfish/v1/AccountService",
-		"Chassis":            "/redfish/v1/Chassis",
-		"CompositionService": "/redfish/v1/CompositionService",
-		"EventService":       "/redfish/v1/EventService",
-		"Managers":           "/redfish/v1/Managers",
-		"Registries":         "/redfish/v1/Registries",
-		"SessionService":     "/redfish/v1/SessionService",
-		"Systems":            "/redfish/v1/Systems",
-		"Tasks":              "/redfish/v1/Tasks",
-		"TelemetryService":   "/redfish/v1/TelemetryService",
-		"UpdateService":      "/redfish/v1/UpdateService",
+		"Chassis":        "/redfish/v1/Chassis",
+		"Managers":       "/redfish/v1/Managers",
+		"SessionService": "/redfish/v1/SessionService",
+		"Systems":        "/redfish/v1/Systems",
+		// The TaskService resource, not /redfish/v1/Tasks, which has no route.
+		"Tasks":         "/redfish/v1/TaskService",
+		"UpdateService": "/redfish/v1/UpdateService",
 	}
 	for name, odataID := range implemented {
 		reference, ok := body[name].(map[string]any)

@@ -21,6 +21,10 @@ type handler struct {
 	// ServiceRoot: it comes from the environment and cannot change without a
 	// restart.
 	identity serviceRootIdentity
+
+	// networkProtocol is writable, so it holds state for the lifetime of the
+	// handler rather than being rebuilt per read.
+	networkProtocol *networkProtocolState
 }
 
 func NewHandler(bmcUser string, bmcPassword string, resourceManager resourcemanager.ResourceManager) *handler {
@@ -28,10 +32,11 @@ func NewHandler(bmcUser string, bmcPassword string, resourceManager resourcemana
 	identity.log()
 
 	return &handler{
-		rm:          resourceManager,
-		bmcUser:     bmcUser,
-		bmcPassword: bmcPassword,
-		identity:    identity,
+		rm:              resourceManager,
+		bmcUser:         bmcUser,
+		bmcPassword:     bmcPassword,
+		identity:        identity,
+		networkProtocol: newNetworkProtocolState(),
 	}
 }
 
@@ -164,34 +169,30 @@ func (h *handler) GetServiceRoot() *server.ServiceRootV1161ServiceRoot {
 		Managers: server.OdataV4IdRef{
 			OdataId: "/redfish/v1/Managers",
 		},
-		Registries: server.OdataV4IdRef{
-			OdataId: "/redfish/v1/Registries",
-		},
 		SessionService: server.OdataV4IdRef{
 			OdataId: "/redfish/v1/SessionService",
 		},
 		Systems: server.OdataV4IdRef{
 			OdataId: "/redfish/v1/Systems",
 		},
+		// Points at the TaskService resource, which is served. It previously
+		// pointed at /redfish/v1/Tasks, for which no route exists at all.
 		Tasks: server.OdataV4IdRef{
-			OdataId: "/redfish/v1/Tasks",
-		},
-		AccountService: server.OdataV4IdRef{
-			OdataId: "/redfish/v1/AccountService",
-		},
-		EventService: server.OdataV4IdRef{
-			OdataId: "/redfish/v1/EventService",
-		},
-		TelemetryService: server.OdataV4IdRef{
-			OdataId: "/redfish/v1/TelemetryService",
+			OdataId: "/redfish/v1/TaskService",
 		},
 		UpdateService: server.OdataV4IdRef{
 			OdataId: "/redfish/v1/UpdateService",
 		},
-		CompositionService: server.OdataV4IdRef{
-			OdataId: "/redfish/v1/CompositionService",
-		},
-		ProtocolFeaturesSupported: server.ServiceRootV1161ProtocolFeaturesSupported{},
+		// Registries, AccountService, EventService, TelemetryService and
+		// CompositionService are deliberately not advertised. Every one of them
+		// answered 501, and an advertised link that fails is worse than no
+		// link: a client that walks the service root treats the error as a
+		// broken BMC, whereas an absent property means "not supported", which
+		// is both true and what Redfish says to do.
+		//
+		// ProtocolFeaturesSupported is likewise left unset. Absent means the
+		// client does not try $expand and fetches collection members
+		// individually, which is what this service can actually serve.
 		Links: server.ServiceRootV1161Links{
 			ManagerProvidingService: server.OdataV4IdRef{
 				OdataId: "/redfish/v1/Managers/BMC",

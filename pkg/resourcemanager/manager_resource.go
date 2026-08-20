@@ -68,6 +68,13 @@ func NewManager(id, name, managerUUID string) *ManagerAdapter {
 		LogServices: server.OdataV4IdRef{
 			OdataId: fmt.Sprintf("/redfish/v1/Managers/%s/LogServices", id),
 		},
+		// Now served, so it must be advertised. It was previously left unset,
+		// which meant it went out as `{}` and then, once empty objects started
+		// being dropped, vanished entirely. A machine controller reads
+		// IPMI.ProtocolEnabled from here as the very first step on a new host.
+		NetworkProtocol: server.OdataV4IdRef{
+			OdataId: fmt.Sprintf("/redfish/v1/Managers/%s/NetworkProtocol", id),
+		},
 		SerialInterfaces: server.OdataV4IdRef{
 			OdataId: fmt.Sprintf("/redfish/v1/Managers/%s/SerialInterfaces", id),
 		},

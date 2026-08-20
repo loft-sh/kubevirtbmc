@@ -171,6 +171,22 @@ func (m *VirtualMachineResourceManager) GetComputerSystem() (ComputerSystemInter
 	bootMode := m.detectBootMode(vm)
 	m.computerSystem.SetBootMode(bootMode)
 
+	// KNOWN GAP, deliberately not fixed here: the boot *override* (Boot's
+	// BootSourceOverrideEnabled and BootSourceOverrideTarget) is not refreshed
+	// from the VM the way power state and boot mode are just above. It is set
+	// only in memory, by SetBootDevice via SetBootOverride, and Initialize
+	// rebuilds it from the constructor defaults (Disabled/Hdd). So after a
+	// virtbmc pod restart the emulator reports Disabled/Hdd even when the VM
+	// spec still carries BootOrder: 1 on a NIC, and the report contradicts what
+	// the VM would actually boot until the next PATCH.
+	//
+	// Fixing it means deriving the override from
+	// vm.Spec.Template.Spec.Domain.Devices.{Interfaces,Disks}[].BootOrder here,
+	// which is the real boot order; the Redfish Boot block never drives it.
+	// Note that the constructor defaults are the honest starting point - a
+	// fresh Continuous/Pxe would assert a persistent override that is not in
+	// force - so this is about reconstructing real state, not changing defaults.
+
 	return m.computerSystem, nil
 }
 

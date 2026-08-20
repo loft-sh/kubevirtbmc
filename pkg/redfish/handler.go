@@ -112,17 +112,20 @@ func (h *handler) GetServiceRoot() *server.ServiceRootV1161ServiceRoot {
 }
 
 func (h *handler) GetManagerCollection() *server.ManagerCollectionManagerCollection {
-	return &server.ManagerCollectionManagerCollection{
-		OdataContext: "/redfish/v1/$metadata#ManagerCollection.ManagerCollection",
-		OdataId:      "/redfish/v1/Managers",
-		OdataType:    "#ManagerCollection.ManagerCollection",
-		Description:  "Manager Collection",
-		Name:         "Manager Collection",
-		Members: []server.OdataV4IdRef{
-			{
-				OdataId: "/redfish/v1/Managers/BMC",
-			},
+	members := []server.OdataV4IdRef{
+		{
+			OdataId: "/redfish/v1/Managers/BMC",
 		},
+	}
+
+	return &server.ManagerCollectionManagerCollection{
+		OdataContext:      "/redfish/v1/$metadata#ManagerCollection.ManagerCollection",
+		OdataId:           "/redfish/v1/Managers",
+		OdataType:         "#ManagerCollection.ManagerCollection",
+		Description:       "Manager Collection",
+		Name:              "Manager Collection",
+		Members:           members,
+		MembersodataCount: int64(len(members)),
 	}
 }
 
@@ -179,17 +182,20 @@ func (h *handler) VirtualMediaInsert(image string) error {
 }
 
 func (h *handler) GetComputerSystemCollection() *server.ComputerSystemCollectionComputerSystemCollection {
-	return &server.ComputerSystemCollectionComputerSystemCollection{
-		OdataContext: "/redfish/v1/$metadata#ComputerSystemCollection.ComputerSystemCollection",
-		OdataId:      "/redfish/v1/Systems",
-		OdataType:    "#ComputerSystemCollection.ComputerSystemCollection",
-		Description:  "Computer System Collection",
-		Name:         "Computer System Collection",
-		Members: []server.OdataV4IdRef{
-			{
-				OdataId: "/redfish/v1/Systems/1",
-			},
+	members := []server.OdataV4IdRef{
+		{
+			OdataId: "/redfish/v1/Systems/1",
 		},
+	}
+
+	return &server.ComputerSystemCollectionComputerSystemCollection{
+		OdataContext:      "/redfish/v1/$metadata#ComputerSystemCollection.ComputerSystemCollection",
+		OdataId:           "/redfish/v1/Systems",
+		OdataType:         "#ComputerSystemCollection.ComputerSystemCollection",
+		Description:       "Computer System Collection",
+		Name:              "Computer System Collection",
+		Members:           members,
+		MembersodataCount: int64(len(members)),
 	}
 }
 

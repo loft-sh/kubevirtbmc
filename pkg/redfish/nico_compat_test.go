@@ -154,3 +154,39 @@ func TestGetManagerEthernetInterface_UnknownIDErrors(t *testing.T) {
 	_, err := h.GetManagerEthernetInterface("BMC", "eth9")
 	assert.Error(t, err)
 }
+
+// Members@odata.count must equal len(Members). It was left unset on both
+// top-level collections, so they went out reporting one member and a count of
+// 0; a client that trusts the count before iterating concludes there are no
+// systems and no managers at all.
+func TestGetComputerSystemCollection_CountMatchesMembers(t *testing.T) {
+	h := NewHandler(testUsername, testPassword, nil)
+
+	body := asMap(t, h.GetComputerSystemCollection())
+
+	assert.Equal(t, "/redfish/v1/Systems", body["@odata.id"])
+
+	members, ok := body["Members"].([]any)
+	require.True(t, ok, "Members must be present and be an array, got %T", body["Members"])
+	require.Len(t, members, 1)
+
+	count, ok := body["Members@odata.count"].(float64)
+	require.True(t, ok, "Members@odata.count must be present")
+	assert.Equal(t, float64(len(members)), count)
+}
+
+func TestGetManagerCollection_CountMatchesMembers(t *testing.T) {
+	h := NewHandler(testUsername, testPassword, nil)
+
+	body := asMap(t, h.GetManagerCollection())
+
+	assert.Equal(t, "/redfish/v1/Managers", body["@odata.id"])
+
+	members, ok := body["Members"].([]any)
+	require.True(t, ok, "Members must be present and be an array, got %T", body["Members"])
+	require.Len(t, members, 1)
+
+	count, ok := body["Members@odata.count"].(float64)
+	require.True(t, ok, "Members@odata.count must be present")
+	assert.Equal(t, float64(len(members)), count)
+}

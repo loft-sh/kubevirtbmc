@@ -25,6 +25,10 @@ type handler struct {
 	// networkProtocol is writable, so it holds state for the lifetime of the
 	// handler rather than being rebuilt per read.
 	networkProtocol *networkProtocolState
+
+	// bios likewise: staged attributes have to survive between the PATCH that
+	// writes them and the GET that reads them back.
+	bios *biosState
 }
 
 func NewHandler(bmcUser string, bmcPassword string, resourceManager resourcemanager.ResourceManager) *handler {
@@ -37,6 +41,7 @@ func NewHandler(bmcUser string, bmcPassword string, resourceManager resourcemana
 		bmcPassword:     bmcPassword,
 		identity:        identity,
 		networkProtocol: newNetworkProtocolState(),
+		bios:            newBiosState(),
 	}
 }
 

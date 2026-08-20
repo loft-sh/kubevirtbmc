@@ -59894,16 +59894,7 @@ func (s *APIService) RedfishV1SystemsComputerSystemIdActionsComputerSystemSetDef
 
 // RedfishV1SystemsComputerSystemIdBiosGet -
 func (s *APIService) RedfishV1SystemsComputerSystemIdBiosGet(ctx context.Context, computerSystemId string) (server.ImplResponse, error) {
-	// TODO - update RedfishV1SystemsComputerSystemIdBiosGet with the required logic for this service method.
-	// Add api_default_service.go to the .openapi-generator-ignore to avoid overwriting this service implementation when updating open api generation.
-
-	// TODO: Uncomment the next line to return response Response(200, BiosV122Bios{}) or use other options such as http.Ok ...
-	// return Response(200, BiosV122Bios{}), nil
-
-	// TODO: Uncomment the next line to return response Response(0, RedfishError{}) or use other options such as http.Ok ...
-	// return Response(0, RedfishError{}), nil
-
-	return server.Response(http.StatusNotImplemented, nil), errors.New("RedfishV1SystemsComputerSystemIdBiosGet method not implemented")
+	return server.Response(200, s.handler.GetBios(computerSystemId)), nil
 }
 
 // RedfishV1SystemsComputerSystemIdBiosPut -
@@ -59928,68 +59919,27 @@ func (s *APIService) RedfishV1SystemsComputerSystemIdBiosPut(ctx context.Context
 
 // RedfishV1SystemsComputerSystemIdBiosPatch -
 func (s *APIService) RedfishV1SystemsComputerSystemIdBiosPatch(ctx context.Context, computerSystemId string, biosV122Bios server.BiosV122Bios) (server.ImplResponse, error) {
-	// TODO - update RedfishV1SystemsComputerSystemIdBiosPatch with the required logic for this service method.
-	// Add api_default_service.go to the .openapi-generator-ignore to avoid overwriting this service implementation when updating open api generation.
+	s.handler.StageBiosAttributes(biosV122Bios.Attributes)
 
-	// TODO: Uncomment the next line to return response Response(200, BiosV122Bios{}) or use other options such as http.Ok ...
-	// return Response(200, BiosV122Bios{}), nil
-
-	// TODO: Uncomment the next line to return response Response(202, TaskV173Task{}) or use other options such as http.Ok ...
-	// return Response(202, TaskV173Task{}), nil
-
-	// TODO: Uncomment the next line to return response Response(204, {}) or use other options such as http.Ok ...
-	// return Response(204, nil),nil
-
-	// TODO: Uncomment the next line to return response Response(0, RedfishError{}) or use other options such as http.Ok ...
-	// return Response(0, RedfishError{}), nil
-
-	return server.Response(http.StatusNotImplemented, nil), errors.New("RedfishV1SystemsComputerSystemIdBiosPatch method not implemented")
+	return server.Response(200, s.handler.GetBios(computerSystemId)), nil
 }
 
 // RedfishV1SystemsComputerSystemIdBiosActionsBiosChangePasswordPost -
 func (s *APIService) RedfishV1SystemsComputerSystemIdBiosActionsBiosChangePasswordPost(ctx context.Context, computerSystemId string, biosV122ChangePasswordRequestBody server.BiosV122ChangePasswordRequestBody) (server.ImplResponse, error) {
-	// TODO - update RedfishV1SystemsComputerSystemIdBiosActionsBiosChangePasswordPost with the required logic for this service method.
-	// Add api_default_service.go to the .openapi-generator-ignore to avoid overwriting this service implementation when updating open api generation.
-
-	// TODO: Uncomment the next line to return response Response(200, RedfishError{}) or use other options such as http.Ok ...
-	// return Response(200, RedfishError{}), nil
-
-	// TODO: Uncomment the next line to return response Response(201, RedfishError{}) or use other options such as http.Ok ...
-	// return Response(201, RedfishError{}), nil
-
-	// TODO: Uncomment the next line to return response Response(202, TaskV173Task{}) or use other options such as http.Ok ...
-	// return Response(202, TaskV173Task{}), nil
-
-	// TODO: Uncomment the next line to return response Response(204, {}) or use other options such as http.Ok ...
-	// return Response(204, nil),nil
-
-	// TODO: Uncomment the next line to return response Response(0, RedfishError{}) or use other options such as http.Ok ...
-	// return Response(0, RedfishError{}), nil
-
-	return server.Response(http.StatusNotImplemented, nil), errors.New("RedfishV1SystemsComputerSystemIdBiosActionsBiosChangePasswordPost method not implemented")
+	// Accepted and discarded. There is no BIOS password to change, but the
+	// action is advertised, and an advertised action that fails reads as a
+	// broken BMC rather than as an unsupported feature.
+	return server.Response(http.StatusOK, map[string]interface{}{}), nil
 }
 
 // RedfishV1SystemsComputerSystemIdBiosActionsBiosResetBiosPost -
 func (s *APIService) RedfishV1SystemsComputerSystemIdBiosActionsBiosResetBiosPost(ctx context.Context, computerSystemId string, body map[string]interface{}) (server.ImplResponse, error) {
-	// TODO - update RedfishV1SystemsComputerSystemIdBiosActionsBiosResetBiosPost with the required logic for this service method.
-	// Add api_default_service.go to the .openapi-generator-ignore to avoid overwriting this service implementation when updating open api generation.
+	// Advertised on the BIOS resource, so it has to answer. Restoring the
+	// defaults is exactly what this action means, and here the defaults ARE the
+	// attribute set served at startup.
+	s.handler.ResetBios()
 
-	// TODO: Uncomment the next line to return response Response(200, RedfishError{}) or use other options such as http.Ok ...
-	// return Response(200, RedfishError{}), nil
-
-	// TODO: Uncomment the next line to return response Response(201, RedfishError{}) or use other options such as http.Ok ...
-	// return Response(201, RedfishError{}), nil
-
-	// TODO: Uncomment the next line to return response Response(202, TaskV173Task{}) or use other options such as http.Ok ...
-	// return Response(202, TaskV173Task{}), nil
-
-	// TODO: Uncomment the next line to return response Response(204, {}) or use other options such as http.Ok ...
-	// return Response(204, nil),nil
-
-	// TODO: Uncomment the next line to return response Response(0, RedfishError{}) or use other options such as http.Ok ...
-	// return Response(0, RedfishError{}), nil
-
-	return server.Response(http.StatusNotImplemented, nil), errors.New("RedfishV1SystemsComputerSystemIdBiosActionsBiosResetBiosPost method not implemented")
+	return server.Response(http.StatusOK, map[string]interface{}{}), nil
 }
 
 // RedfishV1SystemsComputerSystemIdBootCertificatesGet -

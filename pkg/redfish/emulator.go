@@ -33,6 +33,11 @@ func NewEmulator(ctx context.Context, port int, bmcUser string, bmcPassword stri
 	// Dell iDRAC attributes are an OEM extension, so they have no generated
 	// route. Served only when the BMC claims to be a Dell, so that the vendor
 	// it reports and the OEM surface it exposes cannot drift apart.
+	// The BIOS settings object has no generated route, and is served whatever
+	// vendor is claimed: staging BIOS attributes is standard Redfish, not a
+	// Dell extension.
+	registerBiosSettingsRoutes(router, authMiddleware, apiService.handler)
+
 	if apiService.handler.identity.isDell() {
 		registerDellOemRoutes(router, authMiddleware, resourcemanager.DefaultManagerId)
 		registerDellJobRoutes(router, authMiddleware, resourcemanager.DefaultManagerId)

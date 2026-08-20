@@ -130901,10 +130901,10 @@ func (c *DefaultAPIController) RedfishV1SystemsComputerSystemIdBiosPatch(w http.
 		c.errorHandler(w, r, &ParsingError{Err: err}, nil)
 		return
 	}
-	if err := AssertBiosV122BiosRequired(biosV122BiosParam); err != nil {
-		c.errorHandler(w, r, err, nil)
-		return
-	}
+	// Not run on a PATCH body, for the same reason as on NetworkProtocol: a
+	// PATCH is partial, so requiring @odata.id, @odata.type, Id and Name would
+	// reject the only shape anyone actually sends, {"Attributes": {...}}.
+	// Constraints still run.
 	if err := AssertBiosV122BiosConstraints(biosV122BiosParam); err != nil {
 		c.errorHandler(w, r, err, nil)
 		return

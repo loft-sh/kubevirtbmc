@@ -35,6 +35,7 @@ func NewEmulator(ctx context.Context, port int, bmcUser string, bmcPassword stri
 	// it reports and the OEM surface it exposes cannot drift apart.
 	if apiService.handler.identity.isDell() {
 		registerDellOemRoutes(router, authMiddleware, resourcemanager.DefaultManagerId)
+		registerDellJobRoutes(router, authMiddleware, resourcemanager.DefaultManagerId)
 	}
 
 	return &Emulator{

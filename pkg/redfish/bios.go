@@ -64,14 +64,18 @@ func expectedDellBiosAttributes() map[string]string {
 		"TpmSecurity":                  "On",
 		"UefiVariableAccess":           "Standard",
 
-		// Not checked, but reported by the reference for a Dell host, and
-		// harmless to carry.
-		"BootSeqRetry": "Disabled",
+		// Not in the checked set, but Dell's infinite-boot check reads it, and
+		// these hosts must keep retrying network boot until the provisioning
+		// agent answers. Disabled would stop after one failed attempt.
+		"BootSeqRetry": "Enabled",
 
-		// SetBootOrderEn and HttpDev1Interface are deliberately NOT served.
-		// Both name specific Dell devices -- a boot sequence and a network
-		// adapter function id -- that do not exist here, and a present-and-wrong
-		// value produces a diff where an absent one produces nothing.
+		// SetBootOrderEn is deliberately NOT served: it names a specific Dell
+		// boot sequence that does not exist here, and a present-and-wrong value
+		// produces a diff where an absent one produces nothing.
+		//
+		// HttpDev1Interface is NOT here either, but for the opposite reason: it
+		// is required, and it is filled in per request from the actual NIC id
+		// rather than baked in as a constant. See GetBios.
 	}
 }
 
@@ -159,7 +163,7 @@ func (h *handler) GetBios(computerSystemID string) map[string]any {
 		"Name":              biosName,
 		"Description":       "BIOS Configuration Current Settings",
 		"AttributeRegistry": "BiosAttributeRegistry.v1_0_0",
-		"Attributes":        asAnyMap(h.bios.live()),
+		"Attributes":        h.biosAttributes(),
 
 		// Where to PATCH. Without this a client has to guess the settings URI.
 		"@Redfish.Settings": map[string]any{
@@ -275,4 +279,25 @@ func (h *handler) ResetBios() {
 	h.bios.staged = map[string]string{}
 
 	logrus.Info("Reset BIOS attributes to defaults")
+}
+
+// biosAttributes is the live attribute set with the NIC-derived entries filled
+// in.
+//
+// HttpDev1Interface names the interface HTTP boot device 1 goes out of. It has
+// to be present: the Dell attribute comparison returns a hard error on the
+// FIRST key it cannot find rather than skipping it, so one absent key stalls
+// the whole poll indefinitely -- and a stalled phase is actively harmful,
+// because the watchdog power-cycles the host and re-runs setup on a timer.
+//
+// It is derived from the interface rather than hard-coded, and a value staged
+// by a client wins, so it can still be corrected over the wire.
+func (h *handler) biosAttributes() map[string]any {
+	attributes := h.bios.live()
+
+	if _, staged := attributes["HttpDev1Interface"]; !staged {
+		attributes["HttpDev1Interface"] = h.bootNICID()
+	}
+
+	return asAnyMap(attributes)
 }

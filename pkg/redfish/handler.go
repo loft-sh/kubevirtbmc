@@ -318,7 +318,15 @@ func (h *handler) GetComputerSystem() (*server.ComputerSystemV1220ComputerSystem
 		return nil, fmt.Errorf("computerSystem is not a *resourcemanager.ComputerSystemAdapter (got %T)", computerSystem)
 	}
 
-	return adapter.ComputerSystem(), nil
+	served := adapter.ComputerSystem()
+
+	// Filled in here rather than in the constructor: the boot order names boot
+	// options, and those are derived from the VM's interfaces, which are not
+	// known when the ComputerSystem is built.
+	h.applyBootOrder(served)
+	h.applyServedNavigationLinks(served)
+
+	return served, nil
 }
 
 func (h *handler) PatchComputerSystem(computerSystemPatch *server.ComputerSystemV1220ComputerSystem) error {
@@ -422,13 +430,18 @@ func (h *handler) GetEthernetInterface(interfaceId string) (*server.EthernetInte
 // describe, so the honest answer is an empty collection rather than an error.
 func (h *handler) GetChassisCollection() *server.ChassisCollectionChassisCollection {
 	return &server.ChassisCollectionChassisCollection{
-		OdataContext:      "/redfish/v1/$metadata#ChassisCollection.ChassisCollection",
-		OdataId:           "/redfish/v1/Chassis",
-		OdataType:         "#ChassisCollection.ChassisCollection",
-		Name:              "Chassis Collection",
-		Description:       "Chassis Collection",
-		Members:           []server.OdataV4IdRef{},
-		MembersodataCount: 0,
+		OdataContext: "/redfish/v1/$metadata#ChassisCollection.ChassisCollection",
+		OdataId:      "/redfish/v1/Chassis",
+		OdataType:    "#ChassisCollection.ChassisCollection",
+		Name:         "Chassis Collection",
+		Description:  "Chassis Collection",
+		Members: []server.OdataV4IdRef{
+			// A client resolving a NIC's device description fetches
+			// Chassis/{system_id} directly, so the member's id has to equal the
+			// ComputerSystem id.
+			{OdataId: fmt.Sprintf("/redfish/v1/Chassis/%s", h.chassisID())},
+		},
+		MembersodataCount: 1,
 	}
 }
 

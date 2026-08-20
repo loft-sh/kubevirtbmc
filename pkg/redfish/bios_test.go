@@ -63,10 +63,21 @@ func TestBios_ServesAttributes(t *testing.T) {
 		assert.Equal(t, want, attributes[key], "attribute %s", key)
 	}
 
-	// Named devices that do not exist here are deliberately absent: absent
-	// produces no diff, present-and-wrong does.
+	// HttpDev1Interface is MANDATORY, not belt-and-braces: the Dell comparison
+	// returns a hard error on the first key it cannot find rather than skipping
+	// it, so one absent key stalls the poll indefinitely -- and a stalled phase
+	// is self-destructive, because the watchdog power-cycles the host and
+	// re-runs setup on a timer. It names the interface HTTP boot device 1 goes
+	// out of, and is derived from the real interface rather than hard-coded.
+	assert.Equal(t, "default", attributes["HttpDev1Interface"])
+
+	// Dell's infinite-boot check reads this, and these hosts have to keep
+	// retrying network boot until the provisioning agent answers.
+	assert.Equal(t, "Enabled", attributes["BootSeqRetry"])
+
+	// SetBootOrderEn names a specific Dell boot sequence that does not exist
+	// here, and absent produces no diff where present-and-wrong does.
 	assert.NotContains(t, attributes, "SetBootOrderEn")
-	assert.NotContains(t, attributes, "HttpDev1Interface")
 }
 
 // The settings object is how a client discovers where to stage writes. Without

@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	defaultComputerSystemId = "1"
+	defaultComputerSystemId = DefaultComputerSystemId
 	defaultManagerId        = DefaultManagerId
 	defaultManagerName      = "Manager"
 	defaultVirtualMediaId   = "CD1"

@@ -29,7 +29,7 @@ func asMap(t *testing.T, v any) map[string]any {
 // GET /redfish/v1/Chassis must be a 200 with an empty collection. ServiceRoot
 // advertises the link, and libredfish treats the 501 it used to return as a
 // hard error rather than as "unsupported".
-func TestGetChassisCollection_IsEmptyNotError(t *testing.T) {
+func TestGetChassisCollection_ListsTheSystemChassis(t *testing.T) {
 	h := NewHandler(testUsername, testPassword, nil)
 
 	body := asMap(t, h.GetChassisCollection())
@@ -39,11 +39,19 @@ func TestGetChassisCollection_IsEmptyNotError(t *testing.T) {
 
 	members, ok := body["Members"].([]any)
 	require.True(t, ok, "Members must be present and be an array, got %T", body["Members"])
-	assert.Empty(t, members)
+
+	// The collection was served empty for a long time, which was enough while
+	// nothing walked it. The boot-option name now resolves through the chassis
+	// -- Chassis/{system_id} to NetworkAdapters to NetworkDeviceFunctions to the
+	// NIC's device description -- so the member has to exist, and its id has to
+	// equal the ComputerSystem id, because that URL is fetched directly rather
+	// than discovered from this listing.
+	require.Len(t, members, 1)
+	assert.Equal(t, "/redfish/v1/Chassis/1", members[0].(map[string]any)["@odata.id"])
 
 	count, ok := body["Members@odata.count"].(float64)
 	require.True(t, ok, "Members@odata.count must be present")
-	assert.Equal(t, float64(0), count)
+	assert.Equal(t, float64(1), count)
 }
 
 // UpdateService itself was a 501, which made FirmwareInventory unreachable no

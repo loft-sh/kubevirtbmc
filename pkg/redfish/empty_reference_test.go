@@ -284,7 +284,9 @@ func TestManager_ReportsStatus(t *testing.T) {
 func TestEmptyCollection_KeepsMembersAndCount(t *testing.T) {
 	h := NewHandler(testUsername, testPassword, nil)
 
-	body := encodeAsServed(t, h.GetChassisCollection())
+	// The task collection, not the chassis one: the chassis now carries a
+	// member, because the boot-option name resolves through it.
+	body := encodeAsServed(t, h.GetTaskCollection())
 
 	members, ok := body["Members"].([]any)
 	require.True(t, ok, "Members must survive as an array, got %T", body["Members"])

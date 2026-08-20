@@ -7,6 +7,12 @@ import (
 	"kubevirt.io/kubevirtbmc/pkg/util"
 )
 
+// DefaultComputerSystemId is the id of the single ComputerSystem virtbmc
+// serves. Exported because the Chassis id has to equal it: a client resolving a
+// NIC's device description fetches Chassis/{system_id}, so a chassis under any
+// other id is unreachable.
+const DefaultComputerSystemId = "1"
+
 type ComputerSystemInterface interface {
 	OdataInterface
 

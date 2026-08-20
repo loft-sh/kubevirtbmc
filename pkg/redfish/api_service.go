@@ -2827,16 +2827,18 @@ func (s *APIService) RedfishV1ChassisPost(ctx context.Context, chassisV1250Chass
 
 // RedfishV1ChassisChassisIdGet -
 func (s *APIService) RedfishV1ChassisChassisIdGet(ctx context.Context, chassisId string) (server.ImplResponse, error) {
-	// TODO - update RedfishV1ChassisChassisIdGet with the required logic for this service method.
-	// Add api_default_service.go to the .openapi-generator-ignore to avoid overwriting this service implementation when updating open api generation.
+	body, err := s.handler.GetChassis(chassisId)
+	if err != nil {
+		return server.Response(http.StatusNotFound, server.RedfishError{
+			Error: server.RedfishErrorError{
+				MessageExtendedInfo: []server.MessageV120Message{
+					{MessageId: "Base.1.2.ResourceMissingAtURI", Message: err.Error()},
+				},
+			},
+		}), nil
+	}
 
-	// TODO: Uncomment the next line to return response Response(200, ChassisV1250Chassis{}) or use other options such as http.Ok ...
-	// return Response(200, ChassisV1250Chassis{}), nil
-
-	// TODO: Uncomment the next line to return response Response(0, RedfishError{}) or use other options such as http.Ok ...
-	// return Response(0, RedfishError{}), nil
-
-	return server.Response(http.StatusNotImplemented, nil), errors.New("RedfishV1ChassisChassisIdGet method not implemented")
+	return server.Response(200, body), nil
 }
 
 // RedfishV1ChassisChassisIdPut -
@@ -7462,30 +7464,34 @@ func (s *APIService) RedfishV1ChassisChassisIdMemoryDomainsMemoryDomainIdMemoryC
 
 // RedfishV1ChassisChassisIdNetworkAdaptersGet -
 func (s *APIService) RedfishV1ChassisChassisIdNetworkAdaptersGet(ctx context.Context, chassisId string) (server.ImplResponse, error) {
-	// TODO - update RedfishV1ChassisChassisIdNetworkAdaptersGet with the required logic for this service method.
-	// Add api_default_service.go to the .openapi-generator-ignore to avoid overwriting this service implementation when updating open api generation.
+	body, err := s.handler.GetNetworkAdapterCollection(chassisId)
+	if err != nil {
+		return server.Response(http.StatusNotFound, server.RedfishError{
+			Error: server.RedfishErrorError{
+				MessageExtendedInfo: []server.MessageV120Message{
+					{MessageId: "Base.1.2.ResourceMissingAtURI", Message: err.Error()},
+				},
+			},
+		}), nil
+	}
 
-	// TODO: Uncomment the next line to return response Response(200, NetworkAdapterCollectionNetworkAdapterCollection{}) or use other options such as http.Ok ...
-	// return Response(200, NetworkAdapterCollectionNetworkAdapterCollection{}), nil
-
-	// TODO: Uncomment the next line to return response Response(0, RedfishError{}) or use other options such as http.Ok ...
-	// return Response(0, RedfishError{}), nil
-
-	return server.Response(http.StatusNotImplemented, nil), errors.New("RedfishV1ChassisChassisIdNetworkAdaptersGet method not implemented")
+	return server.Response(200, body), nil
 }
 
 // RedfishV1ChassisChassisIdNetworkAdaptersNetworkAdapterIdGet -
 func (s *APIService) RedfishV1ChassisChassisIdNetworkAdaptersNetworkAdapterIdGet(ctx context.Context, chassisId string, networkAdapterId string) (server.ImplResponse, error) {
-	// TODO - update RedfishV1ChassisChassisIdNetworkAdaptersNetworkAdapterIdGet with the required logic for this service method.
-	// Add api_default_service.go to the .openapi-generator-ignore to avoid overwriting this service implementation when updating open api generation.
+	body, err := s.handler.GetNetworkAdapter(chassisId, networkAdapterId)
+	if err != nil {
+		return server.Response(http.StatusNotFound, server.RedfishError{
+			Error: server.RedfishErrorError{
+				MessageExtendedInfo: []server.MessageV120Message{
+					{MessageId: "Base.1.2.ResourceMissingAtURI", Message: err.Error()},
+				},
+			},
+		}), nil
+	}
 
-	// TODO: Uncomment the next line to return response Response(200, NetworkAdapterV1100NetworkAdapter{}) or use other options such as http.Ok ...
-	// return Response(200, NetworkAdapterV1100NetworkAdapter{}), nil
-
-	// TODO: Uncomment the next line to return response Response(0, RedfishError{}) or use other options such as http.Ok ...
-	// return Response(0, RedfishError{}), nil
-
-	return server.Response(http.StatusNotImplemented, nil), errors.New("RedfishV1ChassisChassisIdNetworkAdaptersNetworkAdapterIdGet method not implemented")
+	return server.Response(200, body), nil
 }
 
 // RedfishV1ChassisChassisIdNetworkAdaptersNetworkAdapterIdPut -
@@ -7875,30 +7881,34 @@ func (s *APIService) RedfishV1ChassisChassisIdNetworkAdaptersNetworkAdapterIdMet
 
 // RedfishV1ChassisChassisIdNetworkAdaptersNetworkAdapterIdNetworkDeviceFunctionsGet -
 func (s *APIService) RedfishV1ChassisChassisIdNetworkAdaptersNetworkAdapterIdNetworkDeviceFunctionsGet(ctx context.Context, chassisId string, networkAdapterId string) (server.ImplResponse, error) {
-	// TODO - update RedfishV1ChassisChassisIdNetworkAdaptersNetworkAdapterIdNetworkDeviceFunctionsGet with the required logic for this service method.
-	// Add api_default_service.go to the .openapi-generator-ignore to avoid overwriting this service implementation when updating open api generation.
+	body, err := s.handler.GetNetworkDeviceFunctionCollection(chassisId, networkAdapterId)
+	if err != nil {
+		return server.Response(http.StatusNotFound, server.RedfishError{
+			Error: server.RedfishErrorError{
+				MessageExtendedInfo: []server.MessageV120Message{
+					{MessageId: "Base.1.2.ResourceMissingAtURI", Message: err.Error()},
+				},
+			},
+		}), nil
+	}
 
-	// TODO: Uncomment the next line to return response Response(200, NetworkDeviceFunctionCollectionNetworkDeviceFunctionCollection{}) or use other options such as http.Ok ...
-	// return Response(200, NetworkDeviceFunctionCollectionNetworkDeviceFunctionCollection{}), nil
-
-	// TODO: Uncomment the next line to return response Response(0, RedfishError{}) or use other options such as http.Ok ...
-	// return Response(0, RedfishError{}), nil
-
-	return server.Response(http.StatusNotImplemented, nil), errors.New("RedfishV1ChassisChassisIdNetworkAdaptersNetworkAdapterIdNetworkDeviceFunctionsGet method not implemented")
+	return server.Response(200, body), nil
 }
 
 // RedfishV1ChassisChassisIdNetworkAdaptersNetworkAdapterIdNetworkDeviceFunctionsNetworkDeviceFunctionIdGet -
 func (s *APIService) RedfishV1ChassisChassisIdNetworkAdaptersNetworkAdapterIdNetworkDeviceFunctionsNetworkDeviceFunctionIdGet(ctx context.Context, chassisId string, networkAdapterId string, networkDeviceFunctionId string) (server.ImplResponse, error) {
-	// TODO - update RedfishV1ChassisChassisIdNetworkAdaptersNetworkAdapterIdNetworkDeviceFunctionsNetworkDeviceFunctionIdGet with the required logic for this service method.
-	// Add api_default_service.go to the .openapi-generator-ignore to avoid overwriting this service implementation when updating open api generation.
+	body, err := s.handler.GetNetworkDeviceFunction(chassisId, networkAdapterId, networkDeviceFunctionId)
+	if err != nil {
+		return server.Response(http.StatusNotFound, server.RedfishError{
+			Error: server.RedfishErrorError{
+				MessageExtendedInfo: []server.MessageV120Message{
+					{MessageId: "Base.1.2.ResourceMissingAtURI", Message: err.Error()},
+				},
+			},
+		}), nil
+	}
 
-	// TODO: Uncomment the next line to return response Response(200, NetworkDeviceFunctionV191NetworkDeviceFunction{}) or use other options such as http.Ok ...
-	// return Response(200, NetworkDeviceFunctionV191NetworkDeviceFunction{}), nil
-
-	// TODO: Uncomment the next line to return response Response(0, RedfishError{}) or use other options such as http.Ok ...
-	// return Response(0, RedfishError{}), nil
-
-	return server.Response(http.StatusNotImplemented, nil), errors.New("RedfishV1ChassisChassisIdNetworkAdaptersNetworkAdapterIdNetworkDeviceFunctionsNetworkDeviceFunctionIdGet method not implemented")
+	return server.Response(200, body), nil
 }
 
 // RedfishV1ChassisChassisIdNetworkAdaptersNetworkAdapterIdNetworkDeviceFunctionsNetworkDeviceFunctionIdPut -
@@ -60098,16 +60108,7 @@ func (s *APIService) RedfishV1SystemsComputerSystemIdBootCertificatesCertificate
 
 // RedfishV1SystemsComputerSystemIdBootOptionsGet -
 func (s *APIService) RedfishV1SystemsComputerSystemIdBootOptionsGet(ctx context.Context, computerSystemId string) (server.ImplResponse, error) {
-	// TODO - update RedfishV1SystemsComputerSystemIdBootOptionsGet with the required logic for this service method.
-	// Add api_default_service.go to the .openapi-generator-ignore to avoid overwriting this service implementation when updating open api generation.
-
-	// TODO: Uncomment the next line to return response Response(200, BootOptionCollectionBootOptionCollection{}) or use other options such as http.Ok ...
-	// return Response(200, BootOptionCollectionBootOptionCollection{}), nil
-
-	// TODO: Uncomment the next line to return response Response(0, RedfishError{}) or use other options such as http.Ok ...
-	// return Response(0, RedfishError{}), nil
-
-	return server.Response(http.StatusNotImplemented, nil), errors.New("RedfishV1SystemsComputerSystemIdBootOptionsGet method not implemented")
+	return server.Response(200, s.handler.GetBootOptionCollection(computerSystemId)), nil
 }
 
 // RedfishV1SystemsComputerSystemIdBootOptionsPost -
@@ -60132,16 +60133,21 @@ func (s *APIService) RedfishV1SystemsComputerSystemIdBootOptionsPost(ctx context
 
 // RedfishV1SystemsComputerSystemIdBootOptionsBootOptionIdGet -
 func (s *APIService) RedfishV1SystemsComputerSystemIdBootOptionsBootOptionIdGet(ctx context.Context, computerSystemId string, bootOptionId string) (server.ImplResponse, error) {
-	// TODO - update RedfishV1SystemsComputerSystemIdBootOptionsBootOptionIdGet with the required logic for this service method.
-	// Add api_default_service.go to the .openapi-generator-ignore to avoid overwriting this service implementation when updating open api generation.
+	bootOption, err := s.handler.GetBootOption(computerSystemId, bootOptionId)
+	if err != nil {
+		return server.Response(http.StatusNotFound, server.RedfishError{
+			Error: server.RedfishErrorError{
+				MessageExtendedInfo: []server.MessageV120Message{
+					{
+						MessageId: "Base.1.2.ResourceMissingAtURI",
+						Message:   err.Error(),
+					},
+				},
+			},
+		}), nil
+	}
 
-	// TODO: Uncomment the next line to return response Response(200, BootOptionV105BootOption{}) or use other options such as http.Ok ...
-	// return Response(200, BootOptionV105BootOption{}), nil
-
-	// TODO: Uncomment the next line to return response Response(0, RedfishError{}) or use other options such as http.Ok ...
-	// return Response(0, RedfishError{}), nil
-
-	return server.Response(http.StatusNotImplemented, nil), errors.New("RedfishV1SystemsComputerSystemIdBootOptionsBootOptionIdGet method not implemented")
+	return server.Response(200, bootOption), nil
 }
 
 // RedfishV1SystemsComputerSystemIdBootOptionsBootOptionIdPut -
@@ -65943,16 +65949,7 @@ func (s *APIService) RedfishV1SystemsComputerSystemIdProcessorsProcessorIdSubPro
 
 // RedfishV1SystemsComputerSystemIdSecureBootGet -
 func (s *APIService) RedfishV1SystemsComputerSystemIdSecureBootGet(ctx context.Context, computerSystemId string) (server.ImplResponse, error) {
-	// TODO - update RedfishV1SystemsComputerSystemIdSecureBootGet with the required logic for this service method.
-	// Add api_default_service.go to the .openapi-generator-ignore to avoid overwriting this service implementation when updating open api generation.
-
-	// TODO: Uncomment the next line to return response Response(200, SecureBootV111SecureBoot{}) or use other options such as http.Ok ...
-	// return Response(200, SecureBootV111SecureBoot{}), nil
-
-	// TODO: Uncomment the next line to return response Response(0, RedfishError{}) or use other options such as http.Ok ...
-	// return Response(0, RedfishError{}), nil
-
-	return server.Response(http.StatusNotImplemented, nil), errors.New("RedfishV1SystemsComputerSystemIdSecureBootGet method not implemented")
+	return server.Response(200, s.handler.GetSecureBoot(computerSystemId)), nil
 }
 
 // RedfishV1SystemsComputerSystemIdSecureBootPut -

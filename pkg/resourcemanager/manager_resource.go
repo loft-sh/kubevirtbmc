@@ -33,9 +33,16 @@ func NewManager(id, name, managerUUID string) *ManagerAdapter {
 		Id:           id,
 		UUID:         managerUUID,
 		Model:        util.Ptr("KubeVirtBMC"),
-		Status:       server.ResourceStatus{},
-		ManagerType:  "BMC",
-		Links:        server.ManagerV1190Links{},
+		// Status was left zero-valued, which used to go out as `"Status":{}`.
+		// Now that empty objects are dropped from the response it would vanish
+		// instead, and a BMC that reports no health at all reads as a BMC in
+		// trouble to anything that inventories one.
+		Status: server.ResourceStatus{
+			Health: util.Ptr(server.RESOURCEHEALTH_OK),
+			State:  util.Ptr(server.RESOURCESTATE_ENABLED),
+		},
+		ManagerType: "BMC",
+		Links:       server.ManagerV1190Links{},
 		Actions: server.ManagerV1190Actions{
 			ManagerReset: server.ManagerV1190Reset{
 				Target: fmt.Sprintf("/redfish/v1/Managers/%s/Actions/Manager.Reset", id),

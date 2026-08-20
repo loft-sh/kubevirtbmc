@@ -41,10 +41,18 @@ func NewComputerSystem(id, name, serial, systemUUID string, powerState server.Re
 		PartNumber:   util.Ptr(""),
 		SerialNumber: util.Ptr(serial),
 		SKU:          util.Ptr(""),
-		Status:       server.ResourceStatus{},
-		SystemType:   server.COMPUTERSYSTEMV1220SYSTEMTYPE_VIRTUAL,
-		Links:        server.ComputerSystemV1220Links{},
-		PowerState:   powerState,
+		// Status was left zero-valued, which used to go out as `"Status":{}`.
+		// Now that empty objects are dropped from the response it would vanish
+		// instead, and clients read Status to decide whether a system is usable
+		// at all. State is the resource's availability, not the VM's power
+		// state: PowerState already carries that.
+		Status: server.ResourceStatus{
+			Health: util.Ptr(server.RESOURCEHEALTH_OK),
+			State:  util.Ptr(server.RESOURCESTATE_ENABLED),
+		},
+		SystemType: server.COMPUTERSYSTEMV1220SYSTEMTYPE_VIRTUAL,
+		Links:      server.ComputerSystemV1220Links{},
+		PowerState: powerState,
 		Actions: server.ComputerSystemV1220Actions{
 			ComputerSystemReset: server.ComputerSystemV1220Reset{
 				Target: fmt.Sprintf("/redfish/v1/Systems/%s/Actions/ComputerSystem.Reset", id),
@@ -64,7 +72,16 @@ func NewComputerSystem(id, name, serial, systemUUID string, powerState server.Re
 			BootSourceOverrideTarget:                server.COMPUTERSYSTEMBOOTSOURCE_HDD,
 			BootSourceOverrideTargetAllowableValues: []string{"Pxe", "Hdd"},
 		},
-		OperatingSystem: fmt.Sprintf("/redfish/v1/Systems/%s/OperatingSystem", id),
+		OperatingSystem: server.OdataV4IdRef{
+			OdataId: fmt.Sprintf("/redfish/v1/Systems/%s/OperatingSystem", id),
+		},
+		// The System-anchored NIC collection is served, but the link to it was
+		// left zero-valued, so it went out as `"EthernetInterfaces":{}` and no
+		// client could reach it. The Manager-anchored collection is a separate
+		// resource and was already linked.
+		EthernetInterfaces: server.OdataV4IdRef{
+			OdataId: fmt.Sprintf("/redfish/v1/Systems/%s/EthernetInterfaces", id),
+		},
 		VirtualMedia: server.OdataV4IdRef{
 			OdataId: fmt.Sprintf("/redfish/v1/Systems/%s/VirtualMedia", id),
 		},

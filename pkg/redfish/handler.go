@@ -132,9 +132,13 @@ func (h *handler) GetSessionCollection() *server.SessionCollectionSessionCollect
 
 func (h *handler) GetServiceRoot() *server.ServiceRootV1161ServiceRoot {
 	return &server.ServiceRootV1161ServiceRoot{
-		OdataContext:   "/redfish/v1/$metadata#ServiceRoot.ServiceRoot",
-		OdataId:        "/redfish/v1",
-		OdataType:      "#ServiceRoot.v1_16_1.ServiceRoot",
+		OdataContext: "/redfish/v1/$metadata#ServiceRoot.ServiceRoot",
+		OdataId:      "/redfish/v1",
+		OdataType:    "#ServiceRoot.v1_16_1.ServiceRoot",
+		// Id is required and carries no omitempty, so leaving it unset shipped
+		// `"Id":""`. RootService is the value the DMTF ServiceRoot mockups and
+		// shipping BMCs use.
+		Id:             "RootService",
 		Description:    "ServiceRoot",
 		Name:           "ServiceRoot",
 		RedfishVersion: "1.16.1",

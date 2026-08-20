@@ -112,7 +112,14 @@ func EncodeJSONResponse(i interface{}, status *int, w http.ResponseWriter) error
 	}
 
 	if i != nil {
-		return json.NewEncoder(w).Encode(i)
+		// A zero-valued complex field in these generated models serializes to
+		// `{}`, which strict Redfish clients reject where they expect a
+		// reference. See omitEmptyObjects in omit_empty_objects.go.
+		body, err := omitEmptyObjects(i)
+		if err != nil {
+			return err
+		}
+		return json.NewEncoder(w).Encode(body)
 	}
 
 	return nil

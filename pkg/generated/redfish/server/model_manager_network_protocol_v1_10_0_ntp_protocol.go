@@ -18,7 +18,13 @@ import (
 type ManagerNetworkProtocolV1100NtpProtocol struct {
 
 	// Indicates to which user-supplied NTP servers this manager is subscribed.
-	NTPServers []*string `json:"NTPServers,omitempty"`
+	//
+	// omitempty is deliberately absent: an empty slice must still serialize, as
+	// `"NTPServers": []`. With omitempty, "subscribed to no NTP servers" and
+	// "does not report NTP servers at all" become the same payload, and a
+	// client that reads the field without treating it as optional fails on the
+	// second.
+	NTPServers []*string `json:"NTPServers"`
 
 	// The NTP servers supplied by other network protocols to this manager.
 	NetworkSuppliedServers []*string `json:"NetworkSuppliedServers,omitempty"`

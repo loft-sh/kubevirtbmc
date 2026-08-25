@@ -78513,10 +78513,15 @@ func (c *DefaultAPIController) RedfishV1ManagersManagerIdNetworkProtocolPatch(w 
 		c.errorHandler(w, r, &ParsingError{Err: err}, nil)
 		return
 	}
-	if err := AssertManagerNetworkProtocolV1100ManagerNetworkProtocolRequired(managerNetworkProtocolV1100ManagerNetworkProtocolParam); err != nil {
-		c.errorHandler(w, r, err, nil)
-		return
-	}
+	// The Required assert is deliberately not run on a PATCH body. A PATCH is
+	// partial by definition, so requiring @odata.id, @odata.type, Id and Name
+	// would reject every real request: clients send only what they are
+	// changing, such as {"IPMI":{"ProtocolEnabled":true}} to turn on
+	// IPMI-over-LAN, or {"NTP":{"NTPServers":[...],"ProtocolEnabled":true}} to
+	// set the time source. Rejecting the latter is doubly costly, because that
+	// caller retries a few times and then gives up, leaving the BMC without NTP
+	// and drifting toward the clock-skew check. Constraints still run, so the
+	// values that ARE present are still validated.
 	if err := AssertManagerNetworkProtocolV1100ManagerNetworkProtocolConstraints(managerNetworkProtocolV1100ManagerNetworkProtocolParam); err != nil {
 		c.errorHandler(w, r, err, nil)
 		return
@@ -130896,10 +130901,10 @@ func (c *DefaultAPIController) RedfishV1SystemsComputerSystemIdBiosPatch(w http.
 		c.errorHandler(w, r, &ParsingError{Err: err}, nil)
 		return
 	}
-	if err := AssertBiosV122BiosRequired(biosV122BiosParam); err != nil {
-		c.errorHandler(w, r, err, nil)
-		return
-	}
+	// Not run on a PATCH body, for the same reason as on NetworkProtocol: a
+	// PATCH is partial, so requiring @odata.id, @odata.type, Id and Name would
+	// reject the only shape anyone actually sends, {"Attributes": {...}}.
+	// Constraints still run.
 	if err := AssertBiosV122BiosConstraints(biosV122BiosParam); err != nil {
 		c.errorHandler(w, r, err, nil)
 		return

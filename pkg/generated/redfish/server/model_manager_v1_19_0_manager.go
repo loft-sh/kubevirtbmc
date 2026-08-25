@@ -41,7 +41,12 @@ type ManagerV1190Manager struct {
 	CommandShell ManagerV1190CommandShell `json:"CommandShell,omitempty"`
 
 	// The current date and time with UTC offset of the manager.
-	DateTime *time.Time `json:"DateTime,omitempty"`
+	// Serialized as a string rather than as a time.Time so the wire format is
+	// under our control. encoding/json renders a time.Time as RFC3339Nano,
+	// which yields a `Z` offset and sub-second digits; BMCs report
+	// `2006-01-02T15:04:05+00:00`. The value is parsed by clients to measure
+	// BMC clock drift, so the format is not cosmetic.
+	DateTime *string `json:"DateTime,omitempty"`
 
 	// The time offset from UTC that the DateTime property is in `+HH:MM` format.
 	DateTimeLocalOffset *string `json:"DateTimeLocalOffset,omitempty" validate:"regexp=^([-+][0-1][0-9]:[0-5][0-9])$"`

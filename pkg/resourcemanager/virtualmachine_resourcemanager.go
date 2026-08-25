@@ -3,9 +3,12 @@ package resourcemanager
 import (
 	"context"
 	"fmt"
+	"os"
 	"slices"
 	"strings"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -18,11 +21,19 @@ import (
 )
 
 const (
-	defaultComputerSystemId = "1"
-	defaultManagerId        = "BMC"
+	defaultComputerSystemId = DefaultComputerSystemId
+	defaultManagerId        = DefaultManagerId
 	defaultManagerName      = "Manager"
 	defaultVirtualMediaId   = "CD1"
 	defaultVirtualMediaName = "Virtual Media"
+)
+
+// Fixed namespaces for the UUIDv5 derivations in resourceUUIDs. They are
+// arbitrary but must never change: a new namespace would change every UUID
+// virtbmc reports.
+var (
+	systemUUIDNamespace  = uuid.MustParse("8b7fa2f1-d18b-443a-ab45-0c7cfec0b740")
+	managerUUIDNamespace = uuid.MustParse("c1f0f2a4-6a1d-4f0e-9b3c-7d5e1a2b8c40")
 )
 
 var (
@@ -62,6 +73,34 @@ func NewVirtualMachineResourceManager(
 	}
 }
 
+// resourceUUIDs derives the UUIDs virtbmc reports for the ComputerSystem and
+// the Manager from the KubeVirt VM UID.
+//
+// Both used to be hardcoded to the all-zeros UUID, which made every machine in
+// a fleet report the same identity: anything keying on the system or BMC UUID
+// could not tell two hosts apart. The VM UID is unique, stable across restarts
+// of the agent, and already the source for the ComputerSystem serial, so it is
+// the natural root for both.
+//
+// The ComputerSystem is the VM, so it reports the VM UID itself. The Manager is
+// a distinct resource (the BMC in front of that VM), so it gets a deterministic
+// UUIDv5 derived from the same UID: distinct from the system UUID, but equally
+// stable and unique.
+//
+// The generated models tag UUID `omitempty`, so an empty string would drop the
+// field from the payload entirely rather than merely reporting the wrong value.
+// A VM without a parseable UID therefore falls back to deriving both from
+// namespace/name, which is still unique per VM within a cluster.
+func resourceUUIDs(vm *kubevirtv1.VirtualMachine) (systemUUID, managerUUID string) {
+	if parsed, err := uuid.Parse(string(vm.UID)); err == nil {
+		return parsed.String(), uuid.NewSHA1(managerUUIDNamespace, []byte(vm.UID)).String()
+	}
+
+	key := []byte(strings.Join([]string{vm.Namespace, vm.Name}, "/"))
+	return uuid.NewSHA1(systemUUIDNamespace, key).String(),
+		uuid.NewSHA1(managerUUIDNamespace, key).String()
+}
+
 func (m *VirtualMachineResourceManager) Initialize(namespace, name string) error {
 	vm, err := m.virtClient.KubevirtV1().VirtualMachines(namespace).Get(m.ctx, name, metav1.GetOptions{})
 	if err != nil {
@@ -77,17 +116,30 @@ func (m *VirtualMachineResourceManager) Initialize(namespace, name string) error
 	// Strip dashes from the UUID to fit the 32-char serial limit imposed by some databases (NICo)
 	serial := strings.ReplaceAll(string(vm.UID), "-", "")
 
+	// The serial is the only machine-identity source a client has for a host,
+	// so it has to be both non-empty and the value the inventory was seeded
+	// with. A non-empty serial that does not match creates the machine and then
+	// flags it as un-allocatable, which is harder to diagnose than an outright
+	// failure. The VM UID keeps it non-empty by default, but it cannot match a
+	// seeded serial, so allow the deployment to supply the real one.
+	if configured := strings.TrimSpace(os.Getenv(SerialNumberEnvVar)); configured != "" {
+		serial = configured
+	}
+
+	systemUUID, managerUUID := resourceUUIDs(vm)
+
 	// Initialize computer system
 	m.computerSystem = NewComputerSystem(
 		defaultComputerSystemId,
 		strings.Join([]string{vm.Namespace, vm.Name}, "/"),
 		serial,
+		systemUUID,
 		powerStateMap[vm.Status.Ready],
 		bootMode,
 	)
 
 	// Initialize manager
-	m.manager = NewManager(defaultManagerId, defaultManagerName)
+	m.manager = NewManager(defaultManagerId, defaultManagerName, managerUUID)
 
 	// Initialize virtual media
 	m.virtualMedia = NewVirtualMedia(defaultVirtualMediaId, defaultVirtualMediaName)
@@ -130,10 +182,37 @@ func (m *VirtualMachineResourceManager) GetComputerSystem() (ComputerSystemInter
 	bootMode := m.detectBootMode(vm)
 	m.computerSystem.SetBootMode(bootMode)
 
+	// KNOWN GAP, deliberately not fixed here: the boot *override* (Boot's
+	// BootSourceOverrideEnabled and BootSourceOverrideTarget) is not refreshed
+	// from the VM the way power state and boot mode are just above. It is set
+	// only in memory, by SetBootDevice via SetBootOverride, and Initialize
+	// rebuilds it from the constructor defaults (Disabled/Hdd). So after a
+	// virtbmc pod restart the emulator reports Disabled/Hdd even when the VM
+	// spec still carries BootOrder: 1 on a NIC, and the report contradicts what
+	// the VM would actually boot until the next PATCH.
+	//
+	// Fixing it means deriving the override from
+	// vm.Spec.Template.Spec.Domain.Devices.{Interfaces,Disks}[].BootOrder here,
+	// which is the real boot order; the Redfish Boot block never drives it.
+	// Note that the constructor defaults are the honest starting point - a
+	// fresh Continuous/Pxe would assert a persistent override that is not in
+	// force - so this is about reconstructing real state, not changing defaults.
+
 	return m.computerSystem, nil
 }
 
 func (m *VirtualMachineResourceManager) GetManager() (ManagerInterface, error) {
+	if m.manager == nil {
+		return nil, fmt.Errorf("manager not initialized")
+	}
+
+	// Refresh the reported clock just-in-time, the same way GetComputerSystem
+	// refreshes power state and boot mode. NewManager only runs once, during
+	// Initialize, so a Manager built there would otherwise report the agent's
+	// start time for the lifetime of the pod. Clients that compare their own
+	// clock against the BMC's read that as ever-growing drift.
+	m.manager.SetDateTime(time.Now())
+
 	return m.manager, nil
 }
 

@@ -114,7 +114,12 @@ type ComputerSystemV1220ComputerSystem struct {
 	// The OEM extension.
 	Oem map[string]interface{} `json:"Oem,omitempty"`
 
-	OperatingSystem string `json:"OperatingSystem,omitempty"`
+	// Redfish types OperatingSystem as a reference to the OperatingSystem
+	// resource, not as a URI string. The generator flattened it, so virtbmc was
+	// serving `"OperatingSystem":"/redfish/v1/Systems/1/OperatingSystem"` and a
+	// client that follows the schema rejects a string where it expects an
+	// object with @odata.id.
+	OperatingSystem OdataV4IdRef `json:"OperatingSystem,omitempty"`
 
 	// The link to a collection of PCIe devices that this computer system uses.
 	PCIeDevices []OdataV4IdRef `json:"PCIeDevices,omitempty"`

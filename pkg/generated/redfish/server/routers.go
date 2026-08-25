@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -52,31 +53,42 @@ func NewRouter(authMiddleware mux.MiddlewareFunc, routers ...Router) *mux.Router
 	protected.Use(authMiddleware)
 
 	for _, api := range routers {
-		for name, route := range api.Routes() {
+		routes := api.Routes()
+
+		// Routes is a map, and Go randomizes map iteration, so registering
+		// straight out of it made the route table order differ per process
+		// start. That is invisible for a unique path but not for a pattern
+		// registered twice: with StrictSlash(true), whichever of `/redfish/v1`
+		// and `/redfish/v1/` was registered first served 200 and the other
+		// redirected, so which form was canonical flipped from one start to the
+		// next. Sorting makes the table deterministic.
+		names := make([]string, 0, len(routes))
+		for name := range routes {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+
+		for _, name := range names {
+			route := routes[name]
+
+			var handler http.Handler = route.HandlerFunc
+			handler = Logger(handler, name)
+
+			target := protected
 			switch name {
 			case
 				"RedfishV1Get",
 				"RedfishV1Get_0",
 				"RedfishV1MetadataGet",
 				"RedfishV1SessionServiceSessionsPost":
-				var handler http.Handler = route.HandlerFunc
-				handler = Logger(handler, name)
-
-				router.
-					Methods(route.Method).
-					Path(route.Pattern).
-					Name(name).
-					Handler(handler)
-			default:
-				var handler http.Handler = route.HandlerFunc
-				handler = Logger(handler, name)
-
-				protected.
-					Methods(route.Method).
-					Path(route.Pattern).
-					Name(name).
-					Handler(handler)
+				target = router
 			}
+
+			target.
+				Methods(route.Method).
+				Path(route.Pattern).
+				Name(name).
+				Handler(handler)
 		}
 	}
 
@@ -112,7 +124,14 @@ func EncodeJSONResponse(i interface{}, status *int, w http.ResponseWriter) error
 	}
 
 	if i != nil {
-		return json.NewEncoder(w).Encode(i)
+		// A zero-valued complex field in these generated models serializes to
+		// `{}`, which strict Redfish clients reject where they expect a
+		// reference. See omitEmptyObjects in omit_empty_objects.go.
+		body, err := omitEmptyObjects(i)
+		if err != nil {
+			return err
+		}
+		return json.NewEncoder(w).Encode(body)
 	}
 
 	return nil

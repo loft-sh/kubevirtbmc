@@ -6,6 +6,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
+	"slices"
+	"strings"
 	"sync"
 )
 
@@ -67,11 +69,47 @@ func GetToken(token string) (TokenInfo, bool) {
 	return tokenInfo, exists
 }
 
+// RemoveSession deletes the session with the given session ID and reports
+// whether it existed. The store is keyed by token, not by session ID, so
+// deleting by ID requires the reverse lookup: passing a session ID to
+// RemoveToken silently does nothing.
+func RemoveSession(sessionID string) bool {
+	ts.rwMutex.Lock()
+	defer ts.rwMutex.Unlock()
+
+	for token, tokenInfo := range ts.store {
+		if tokenInfo.ID == sessionID {
+			delete(ts.store, token)
+			return true
+		}
+	}
+
+	return false
+}
+
 func RemoveToken(token string) {
 	ts.rwMutex.Lock()
 	defer ts.rwMutex.Unlock()
 
 	delete(ts.store, token)
+}
+
+// ListSessions returns the currently live sessions, ordered by session ID so
+// the Sessions collection is stable between reads. The token itself is never
+// returned: only the caller that created a session ever sees it.
+func ListSessions() []TokenInfo {
+	ts.rwMutex.RLock()
+	defer ts.rwMutex.RUnlock()
+
+	sessions := make([]TokenInfo, 0, len(ts.store))
+	for _, tokenInfo := range ts.store {
+		sessions = append(sessions, tokenInfo)
+	}
+	slices.SortFunc(sessions, func(a, b TokenInfo) int {
+		return strings.Compare(a.ID, b.ID)
+	})
+
+	return sessions
 }
 
 func GetTokenFromSessionID(sessionID string) (TokenInfo, bool) {

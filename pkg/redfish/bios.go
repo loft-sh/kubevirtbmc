@@ -113,6 +113,38 @@ func (b *biosState) pending() map[string]string {
 	return copyStringMap(b.staged)
 }
 
+// tpm2Hierarchy is the attribute a Dell host clears to take ownership of the
+// TPM, and the one machine setup then polls.
+//
+// A caller patches Clear and waits for the attribute to read Enabled again: on
+// real firmware the clear happens during POST and the hierarchy comes back
+// enabled on the next boot, so Clear is a request, never a resting state. The
+// reference mock encodes exactly that, rewriting a Clear patch to Enabled
+// before storing it and commenting "Clear is transformed to Enabled state after
+// reboot".
+//
+// Storing Clear verbatim is therefore worse than ignoring the write: the poll
+// reads Clear forever, machine setup never completes, and the watchdog
+// power-cycles the host on a timer without ever changing the outcome.
+const (
+	tpm2HierarchyAttribute = "Tpm2Hierarchy"
+	tpm2HierarchyClear     = "Clear"
+	tpm2HierarchyEnabled   = "Enabled"
+)
+
+// applyTpm2HierarchyClear rewrites a Clear request to the state the host would
+// report once it had honoured it. Any other value is left alone.
+func applyTpm2HierarchyClear(attributes map[string]string) {
+	if attributes[tpm2HierarchyAttribute] != tpm2HierarchyClear {
+		return
+	}
+
+	attributes[tpm2HierarchyAttribute] = tpm2HierarchyEnabled
+
+	logrus.WithField("attribute", tpm2HierarchyAttribute).
+		Info("Rewrote a Clear request to Enabled, as the host would report after POST")
+}
+
 // stage records a PATCH against the settings object.
 //
 // The staged values are also applied to the live attributes. On real firmware
@@ -121,6 +153,8 @@ func (b *biosState) pending() map[string]string {
 // client stages a change, reboots, reads the attributes and finds its change
 // missing -- which reads as a BIOS that silently refused the write.
 func (b *biosState) stage(attributes map[string]string) {
+	applyTpm2HierarchyClear(attributes)
+
 	b.mu.Lock()
 	defer b.mu.Unlock()
 

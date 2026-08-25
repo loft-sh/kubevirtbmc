@@ -200,3 +200,28 @@ func TestBios_IgnoresNonStringAttributes(t *testing.T) {
 	assert.Equal(t, "Disabled", attributes["PxeDev1EnDis"], "a bool must not overwrite a string attribute")
 	assert.Equal(t, "Vt100Vt220", attributes["ConTermType"])
 }
+
+// A Clear request reads back Enabled, which is the state the host reports once
+// it has honoured it. Machine setup patches Clear and then polls this
+// attribute, so storing Clear verbatim leaves the poll waiting forever.
+func TestBios_Tpm2HierarchyClearReadsBackEnabled(t *testing.T) {
+	h := NewHandler(testUsername, testPassword, nil)
+
+	h.StageBiosAttributes(map[string]any{"Tpm2Hierarchy": "Clear"})
+
+	attributes := encodeAsServed(t, h.GetBios("1"))["Attributes"].(map[string]any)
+	assert.Equal(t, "Enabled", attributes["Tpm2Hierarchy"],
+		"a Clear request must read back Enabled, or the setup poll never terminates")
+	assert.Equal(t, "Enabled", h.bios.pending()["Tpm2Hierarchy"],
+		"the settings object must agree with the live attribute")
+}
+
+// Only Clear is rewritten. Any other value a client writes is its own.
+func TestBios_Tpm2HierarchyOtherValuesAreNotRewritten(t *testing.T) {
+	h := NewHandler(testUsername, testPassword, nil)
+
+	h.StageBiosAttributes(map[string]any{"Tpm2Hierarchy": "Disabled"})
+
+	attributes := encodeAsServed(t, h.GetBios("1"))["Attributes"].(map[string]any)
+	assert.Equal(t, "Disabled", attributes["Tpm2Hierarchy"])
+}

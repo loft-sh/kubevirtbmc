@@ -93,7 +93,9 @@ func TestAuthMiddleware(t *testing.T) {
 				w.WriteHeader(http.StatusOK)
 			})
 
-			authMiddleware := AuthMiddleware("admin", "admin123")(nextHandler)
+			authMiddleware := AuthMiddleware(func(user, pass string) bool {
+				return user == "admin" && pass == "admin123"
+			})(nextHandler)
 
 			req, err := http.NewRequest("GET", "/", nil)
 			if err != nil {
@@ -108,5 +110,30 @@ func TestAuthMiddleware(t *testing.T) {
 				t.Errorf("AuthMiddleware returned wrong status code: got %v want %v", status, tc.wantStatus)
 			}
 		})
+	}
+}
+
+func TestPasswordHash(t *testing.T) {
+	hash, err := HashPassword("secret")
+	if err != nil {
+		t.Fatalf("failed to hash: %v", err)
+	}
+
+	if !VerifyPassword(hash, "secret") {
+		t.Error("the password it was made from must verify")
+	}
+	if VerifyPassword(hash, "other") {
+		t.Error("a different password must not verify")
+	}
+	if VerifyPassword("secret", "secret") || VerifyPassword("", "") {
+		t.Error("a malformed hash must never verify")
+	}
+
+	again, err := HashPassword("secret")
+	if err != nil {
+		t.Fatalf("failed to hash: %v", err)
+	}
+	if again == hash {
+		t.Error("hashes of the same password must differ by salt")
 	}
 }

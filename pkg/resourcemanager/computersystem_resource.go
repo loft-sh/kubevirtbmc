@@ -14,6 +14,8 @@ type ComputerSystemInterface interface {
 	GetPowerState() server.ResourcePowerState
 	SetPowerState(powerState server.ResourcePowerState)
 	SetBootOverride(server.ComputerSystemBootSource)
+	SetBootOverrideOnce(server.ComputerSystemBootSource)
+	ClearBootOverride()
 	SetBootMode(bootMode server.ComputerSystemV1220BootSourceOverrideMode)
 }
 
@@ -58,11 +60,16 @@ func NewComputerSystem(id, name, uid string, powerState server.ResourcePowerStat
 			BootSourceOverrideEnabled:               server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEENABLED_DISABLED,
 			BootSourceOverrideMode:                  bootMode,
 			BootSourceOverrideTarget:                server.COMPUTERSYSTEMBOOTSOURCE_HDD,
-			BootSourceOverrideTargetAllowableValues: []string{"Pxe", "Hdd"},
+			BootSourceOverrideTargetAllowableValues: []string{"None", "Pxe", "Hdd", "Cd", "UefiHttp"},
 		},
-		OperatingSystem: fmt.Sprintf("/redfish/v1/Systems/%s/OperatingSystem", id),
 		VirtualMedia: server.OdataV4IdRef{
 			OdataId: fmt.Sprintf("/redfish/v1/Systems/%s/VirtualMedia", id),
+		},
+		EthernetInterfaces: server.OdataV4IdRef{
+			OdataId: fmt.Sprintf("/redfish/v1/Systems/%s/EthernetInterfaces", id),
+		},
+		Bios: server.OdataV4IdRef{
+			OdataId: fmt.Sprintf("/redfish/v1/Systems/%s/Bios", id),
 		},
 		HostWatchdogTimer: server.ComputerSystemV1220WatchdogTimer{
 			FunctionEnabled: util.Ptr(false),
@@ -124,6 +131,16 @@ func (a *ComputerSystemAdapter) SetPowerState(powerState server.ResourcePowerSta
 func (a *ComputerSystemAdapter) SetBootOverride(target server.ComputerSystemBootSource) {
 	a.computerSystem.Boot.BootSourceOverrideEnabled = server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEENABLED_CONTINUOUS
 	a.computerSystem.Boot.BootSourceOverrideTarget = target
+}
+
+func (a *ComputerSystemAdapter) SetBootOverrideOnce(target server.ComputerSystemBootSource) {
+	a.computerSystem.Boot.BootSourceOverrideEnabled = server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEENABLED_ONCE
+	a.computerSystem.Boot.BootSourceOverrideTarget = target
+}
+
+func (a *ComputerSystemAdapter) ClearBootOverride() {
+	a.computerSystem.Boot.BootSourceOverrideEnabled = server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEENABLED_DISABLED
+	a.computerSystem.Boot.BootSourceOverrideTarget = server.COMPUTERSYSTEMBOOTSOURCE_HDD
 }
 
 func (a *ComputerSystemAdapter) SetBootMode(bootMode server.ComputerSystemV1220BootSourceOverrideMode) {

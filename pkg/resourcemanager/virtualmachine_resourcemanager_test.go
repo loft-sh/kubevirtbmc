@@ -23,6 +23,8 @@ const (
 	testVMName         = "test-vm"
 	testImageURL       = "http://127.0.0.1/test.iso"
 	testImageSizeBytes = int64(1 << 30) // 1 GiB = 1073741824
+	testRootDisk       = "rootdisk"
+	testBaseMAC        = "02:00:00:00:00:01"
 )
 
 type fakeVirtualMedia struct {
@@ -1030,6 +1032,7 @@ func TestVirtualMachineResourceManager_GetEthernetInterfaces(t *testing.T) {
 				virtClient: fakeVirtClient,
 				namespace:  testNamespace,
 				name:       testVMName,
+				identity:   identityFromAnnotations(nil, ""),
 			}
 
 			interfaces, err := vmrm.GetEthernetInterfaces()
@@ -1078,7 +1081,7 @@ func TestInitializeAnnotations(t *testing.T) {
 			Name:      testVMName,
 			UID:       "abc-123",
 			Annotations: map[string]string{
-				annotationDPU:          "true",
+				annotationDPU:          annotationTrue,
 				annotationSystemSerial: "DPU-BM1",
 				annotationDPUModel:     "BlueField 3 DPU",
 				annotationNicMode:      "DPU",
@@ -1111,53 +1114,51 @@ func TestInitializeAnnotations(t *testing.T) {
 		m := &VirtualMachineResourceManager{ctx: context.TODO(), virtClient: kubevirtfake.NewSimpleClientset(dpuVM)}
 		require.NoError(t, m.Initialize(testNamespace, testVMName))
 
-		require.True(t, m.IsDPU())
+		id := m.Identity()
+		require.True(t, id.DPU)
 		require.Equal(t, "Bluefield", m.computerSystem.Id())
 		cs := m.computerSystem.(*ComputerSystemAdapter).ComputerSystem()
 		require.Equal(t, "DPU-BM1", *cs.SerialNumber)
-		require.Equal(t, "BlueField 3 DPU", m.DPUCard())
+		require.Equal(t, "Nvidia", *cs.Manufacturer)
+		require.Equal(t, "BlueField 3 DPU", *cs.Model)
+		require.Equal(t, "BlueField 3 DPU", id.DPUModel)
 
 		// The ComputerSystem advertises the NVIDIA OEM resource reference.
 		nvidia, ok := cs.Oem["Nvidia"].(map[string]interface{})
 		require.True(t, ok)
 		require.Equal(t, "/redfish/v1/Systems/Bluefield/Oem/Nvidia", nvidia["@odata.id"])
 
-		nicMode, baseMAC := m.SystemOEM()
-		require.Equal(t, "DPU", nicMode)
-		require.Equal(t, "02:00:00:00:00:01", baseMAC)
+		require.Equal(t, "DpuMode", id.Mode)
+		require.Equal(t, "02:00:00:00:00:01", id.BaseMAC)
 
 		// The DPU reports its OS as running so nico's did_dpu_finish_booting passes.
 		require.Equal(t, "OSRunning", string(cs.BootProgress.LastState))
 
-		_, ok = m.AttachedDPUSerial()
-		require.False(t, ok)
+		require.Empty(t, id.PCIeDeviceSerial)
 	})
 
 	t.Run("host", func(t *testing.T) {
 		m := &VirtualMachineResourceManager{ctx: context.TODO(), virtClient: kubevirtfake.NewSimpleClientset(hostVM)}
 		require.NoError(t, m.Initialize(testNamespace, testVMName))
 
-		require.False(t, m.IsDPU())
+		id := m.Identity()
+		require.False(t, id.DPU)
 		require.Equal(t, "1", m.computerSystem.Id())
 		hostCS := m.computerSystem.(*ComputerSystemAdapter).ComputerSystem()
 		require.Equal(t, "HOST-BM1", *hostCS.SerialNumber)
 		// Only a DPU reports BootProgress.
 		require.Empty(t, string(hostCS.BootProgress.LastState))
 
-		serial, ok := m.AttachedDPUSerial()
-		require.True(t, ok)
-		require.Equal(t, "DPU-BM1", serial)
+		require.Equal(t, "DPU-BM1", id.PCIeDeviceSerial)
 	})
 
 	t.Run("plain falls back to UID serial", func(t *testing.T) {
 		m := &VirtualMachineResourceManager{ctx: context.TODO(), virtClient: kubevirtfake.NewSimpleClientset(plainVM)}
 		require.NoError(t, m.Initialize(testNamespace, testVMName))
 
-		require.False(t, m.IsDPU())
+		require.False(t, m.Identity().DPU)
 		require.Equal(t, "1", m.computerSystem.Id())
 		require.Equal(t, "ghi789", *m.computerSystem.(*ComputerSystemAdapter).ComputerSystem().SerialNumber)
-
-		_, ok := m.AttachedDPUSerial()
-		require.False(t, ok)
+		require.Empty(t, m.Identity().PCIeDeviceSerial)
 	})
 }

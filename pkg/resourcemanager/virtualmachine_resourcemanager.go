@@ -5,10 +5,15 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/sirupsen/logrus"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/util/retry"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	cdiclient "kubevirt.io/client-go/containerizeddataimporter"
 	kvclient "kubevirt.io/client-go/kubevirt"
@@ -24,30 +29,20 @@ const (
 	defaultVirtualMediaId   = "CD1"
 	defaultVirtualMediaName = "Virtual Media"
 
-	// bluefieldComputerSystemId is the ComputerSystem id NVIDIA's Redfish clients
-	// match on (case-sensitive) to recognize a BlueField DPU. A DPU-flagged VM
-	// presents this instead of defaultComputerSystemId.
+	// bluefieldComputerSystemId and bluefieldManagerId are the ids NVIDIA's Redfish
+	// clients match on (case-sensitive): a DPU-flagged VM presents them instead of
+	// the defaults. libredfish also hardcodes the manager id in its rshim PATCH.
 	bluefieldComputerSystemId = "Bluefield"
-	// dpuCardChassisId is the chassis id ("Card1") NVIDIA's clients read the DPU
-	// model from.
-	dpuCardChassisId = "Card1"
-)
+	bluefieldManagerId        = "Bluefield_BMC"
 
-// Annotation keys, all on the KubeVirt VM, that drive the mocked Redfish identity.
-// Each is optional; absent keys fall back to the non-DPU/plain-host behavior.
-const (
-	annotationPrefix = "bmc.kubevirtbmc.io/"
+	// oobEthernetInterfaceID is the id a DPU serves its OOB NIC under; NICo
+	// recognizes the OOB interface by "oob" in the id.
+	oobEthernetInterfaceID = "oob_net0"
 
-	annotationDPU                = annotationPrefix + "dpu"
-	annotationSystemSerial       = annotationPrefix + "system-serial"
-	annotationDPUModel           = annotationPrefix + "dpu-model"
-	annotationNicMode            = annotationPrefix + "nic-mode"
-	annotationBaseMAC            = annotationPrefix + "base-mac"
-	annotationPCIeDeviceSerial   = annotationPrefix + "pcie-device-serial"
-	annotationBMCFirmwareVersion = annotationPrefix + "firmware-version"
-	annotationCECFirmwareVersion = annotationPrefix + "firmware-version-cec"
-	annotationNICFirmwareVersion = annotationPrefix + "firmware-version-nic"
-	annotationBootMAC            = annotationPrefix + "boot-mac"
+	// A one-time boot override is reverted once the restarted VMI exists. The
+	// timeout only bounds a VM that never comes back.
+	defaultBootRestoreInterval = time.Second
+	defaultBootRestoreTimeout  = 10 * time.Minute
 )
 
 // hostBootInterfaceID and hostBootInterfaceUefiDevicePath describe the synthetic
@@ -87,17 +82,15 @@ type VirtualMachineResourceManager struct {
 	manager        ManagerInterface
 	virtualMedia   VirtualMediaInterface
 
-	// Mocked identity derived from VM annotations at Initialize. dpu gates the
-	// BlueField presentation; the remaining fields are only meaningful when set.
-	dpu                bool
-	dpuModel           string
-	nicMode            string
-	baseMAC            string
-	pcieDeviceSerial   string
-	bmcFirmwareVersion string
-	cecFirmwareVersion string
-	nicFirmwareVersion string
-	hostBootMAC        string
+	bootRestoreInterval time.Duration
+	bootRestoreTimeout  time.Duration
+
+	// mu guards the state a client can change at runtime.
+	mu           sync.Mutex
+	identity     Identity
+	passwordHash string
+	// pendingBoot is the armed one-time boot source, empty when none is armed.
+	pendingBoot server.ComputerSystemBootSource
 }
 
 func NewVirtualMachineResourceManager(
@@ -106,9 +99,11 @@ func NewVirtualMachineResourceManager(
 	cdiClient cdiclient.Interface,
 ) *VirtualMachineResourceManager {
 	return &VirtualMachineResourceManager{
-		ctx:        ctx,
-		virtClient: virtClient,
-		cdiClient:  cdiClient,
+		ctx:                 ctx,
+		virtClient:          virtClient,
+		cdiClient:           cdiClient,
+		bootRestoreInterval: defaultBootRestoreInterval,
+		bootRestoreTimeout:  defaultBootRestoreTimeout,
 	}
 }
 
@@ -121,53 +116,45 @@ func (m *VirtualMachineResourceManager) Initialize(namespace, name string) error
 	m.namespace = vm.Namespace
 	m.name = vm.Name
 
-	// Mocked Redfish identity from VM annotations (lab use). Absent keys fall back
-	// to the plain-VM behavior.
-	annotations := vm.Annotations
-	m.dpu = annotations[annotationDPU] == "true"
-	m.dpuModel = annotations[annotationDPUModel]
-	m.nicMode = annotations[annotationNicMode]
-	m.baseMAC = annotations[annotationBaseMAC]
-	m.pcieDeviceSerial = annotations[annotationPCIeDeviceSerial]
-	m.bmcFirmwareVersion = annotations[annotationBMCFirmwareVersion]
-	m.cecFirmwareVersion = annotations[annotationCECFirmwareVersion]
-	m.nicFirmwareVersion = annotations[annotationNICFirmwareVersion]
-	m.hostBootMAC = annotations[annotationBootMAC]
+	identity := identityFromAnnotations(vm.Annotations, string(vm.UID))
+
+	m.mu.Lock()
+	m.identity = identity
+	m.passwordHash = vm.Annotations[annotationPasswordHash]
+	m.mu.Unlock()
 
 	// Detect boot mode from VM firmware configuration
 	bootMode := m.detectBootMode(vm)
 
-	// The matching key. Prefer the explicit annotation; otherwise fall back to the
-	// VM UID with dashes stripped to fit the 32-char serial limit some BMC
-	// databases impose.
-	serial := annotations[annotationSystemSerial]
-	if serial == "" {
-		serial = strings.ReplaceAll(string(vm.UID), "-", "")
-	}
-
-	// A DPU presents the "Bluefield" ComputerSystem id NVIDIA's clients key on.
-	computerSystemId := defaultComputerSystemId
-	if m.dpu {
-		computerSystemId = bluefieldComputerSystemId
-	}
-
 	// Initialize computer system
 	m.computerSystem = NewComputerSystem(
-		computerSystemId,
+		identity.SystemID,
 		strings.Join([]string{vm.Namespace, vm.Name}, "/"),
-		serial,
+		identity.SystemSerial,
 		powerStateMap[vm.Status.Ready],
 		bootMode,
 	)
 
-	// A DPU advertises the NVIDIA OEM resource on its ComputerSystem so clients
-	// follow the reference to read NIC mode and base MAC. The resource itself is
-	// served by a custom route in the Redfish emulator.
-	if m.dpu {
-		if adapter, ok := m.computerSystem.(*ComputerSystemAdapter); ok {
+	if adapter, ok := m.computerSystem.(*ComputerSystemAdapter); ok {
+		adapter.ComputerSystem().Manufacturer = util.Ptr(identity.Manufacturer)
+		adapter.ComputerSystem().Model = util.Ptr(identity.Model)
+
+		// A DPU advertises the NVIDIA OEM resource on its ComputerSystem so clients
+		// follow the reference to read NIC mode and base MAC. The resource itself is
+		// served by a custom route in the Redfish emulator.
+		if !identity.DPU && identity.HostBootMAC != "" {
+			adapter.ComputerSystem().Boot.BootOptions = server.OdataV4IdRef{
+				OdataId: fmt.Sprintf("/redfish/v1/Systems/%s/BootOptions", identity.SystemID),
+			}
+		}
+
+		if identity.DPU {
+			adapter.ComputerSystem().SecureBoot = server.OdataV4IdRef{
+				OdataId: fmt.Sprintf("/redfish/v1/Systems/%s/SecureBoot", identity.SystemID),
+			}
 			adapter.ComputerSystem().Oem = map[string]interface{}{
 				"Nvidia": map[string]interface{}{
-					"@odata.id": fmt.Sprintf("/redfish/v1/Systems/%s/Oem/Nvidia", computerSystemId),
+					"@odata.id": fmt.Sprintf("/redfish/v1/Systems/%s/Oem/Nvidia", identity.SystemID),
 				},
 			}
 			// nico's did_dpu_finish_booting parks the DPU ("waiting for DPU to
@@ -180,10 +167,10 @@ func (m *VirtualMachineResourceManager) Initialize(namespace, name string) error
 	}
 
 	// Initialize manager
-	m.manager = NewManager(defaultManagerId, defaultManagerName)
+	m.manager = NewManager(identity.ManagerID, defaultManagerName)
 
 	// Initialize virtual media
-	m.virtualMedia = NewVirtualMedia(defaultVirtualMediaId, defaultVirtualMediaName)
+	m.virtualMedia = NewVirtualMedia(identity.ManagerID, defaultVirtualMediaId, defaultVirtualMediaName)
 
 	// Build relationships
 	var (
@@ -366,8 +353,11 @@ func (m *VirtualMachineResourceManager) PowerOn() error {
 	if !apierrors.IsNotFound(err) {
 		return fmt.Errorf("failed to get VMI %s/%s: %w", m.namespace, m.name, err)
 	}
-	return m.virtClient.KubevirtV1().VirtualMachines(m.namespace).
-		Start(m.ctx, m.name, &kubevirtv1.StartOptions{})
+
+	return m.startWithBootOnce(func() error {
+		return m.virtClient.KubevirtV1().VirtualMachines(m.namespace).
+			Start(m.ctx, m.name, &kubevirtv1.StartOptions{})
+	})
 }
 
 func (m *VirtualMachineResourceManager) PowerOff() error {
@@ -391,8 +381,181 @@ func (m *VirtualMachineResourceManager) PowerCycle() error {
 	if !isUp {
 		return m.PowerOn()
 	}
-	return m.virtClient.KubevirtV1().VirtualMachines(m.namespace).
-		Restart(m.ctx, m.name, &kubevirtv1.RestartOptions{})
+
+	return m.startWithBootOnce(func() error {
+		return m.virtClient.KubevirtV1().VirtualMachines(m.namespace).
+			Restart(m.ctx, m.name, &kubevirtv1.RestartOptions{})
+	})
+}
+
+// startWithBootOnce runs start, which restarts or starts the VM. When a one-time
+// boot is armed it first points the VM spec's boot order at the armed source and,
+// once start succeeded, schedules the original boot order to be restored as soon
+// as the new VMI exists, so only this one boot follows the override.
+func (m *VirtualMachineResourceManager) startWithBootOnce(start func() error) error {
+	m.mu.Lock()
+	target := m.pendingBoot
+	m.pendingBoot = ""
+	m.mu.Unlock()
+
+	if target == "" {
+		return start()
+	}
+
+	vm, err := m.virtClient.KubevirtV1().VirtualMachines(m.namespace).
+		Get(m.ctx, m.name, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to get VM for one-time boot: %w", err)
+	}
+	if vm.Spec.Template == nil {
+		return fmt.Errorf("failed to apply one-time boot: no template found")
+	}
+
+	devices := &vm.Spec.Template.Spec.Domain.Devices
+	saved := saveBootOrders(devices)
+	if err := bootFirst(devices, target, m.Identity().OOBInterface); err != nil {
+		return fmt.Errorf("failed to apply one-time boot: %w", err)
+	}
+	if _, err := m.virtClient.KubevirtV1().VirtualMachines(m.namespace).
+		Update(m.ctx, vm, metav1.UpdateOptions{}); err != nil {
+		return fmt.Errorf("failed to apply one-time boot: %w", err)
+	}
+
+	var oldUID types.UID
+	vmi, err := m.virtClient.KubevirtV1().VirtualMachineInstances(m.namespace).
+		Get(m.ctx, m.name, metav1.GetOptions{})
+	if err == nil {
+		oldUID = vmi.UID
+	}
+
+	if err := start(); err != nil {
+		if restoreErr := m.restoreBootOrders(saved); restoreErr != nil {
+			logrus.WithError(restoreErr).Error("Failed to restore boot order after a failed start")
+		}
+		m.mu.Lock()
+		m.pendingBoot = target
+		m.mu.Unlock()
+		return err
+	}
+
+	m.computerSystem.ClearBootOverride()
+	go m.restoreBootOrdersWhenRestarted(saved, oldUID)
+
+	return nil
+}
+
+// restoreBootOrdersWhenRestarted waits for a VMI other than the one with oldUID,
+// which has copied the one-time boot order from the VM spec, and then puts the
+// original boot order back.
+func (m *VirtualMachineResourceManager) restoreBootOrdersWhenRestarted(saved bootOrders, oldUID types.UID) {
+	err := wait.PollUntilContextTimeout(m.ctx, m.bootRestoreInterval, m.bootRestoreTimeout, true,
+		func(ctx context.Context) (bool, error) {
+			vmi, err := m.virtClient.KubevirtV1().VirtualMachineInstances(m.namespace).
+				Get(ctx, m.name, metav1.GetOptions{})
+			if err != nil {
+				return false, nil
+			}
+			return vmi.UID != oldUID, nil
+		})
+	if err != nil {
+		logrus.WithError(err).Warn("VMI did not restart in time, restoring boot order anyway")
+	}
+
+	if err := m.restoreBootOrders(saved); err != nil {
+		logrus.WithError(err).Error("Failed to restore boot order after one-time boot")
+		return
+	}
+	logrus.Info("Restored boot order after one-time boot")
+}
+
+func (m *VirtualMachineResourceManager) restoreBootOrders(saved bootOrders) error {
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		vm, err := m.virtClient.KubevirtV1().VirtualMachines(m.namespace).
+			Get(m.ctx, m.name, metav1.GetOptions{})
+		if err != nil {
+			return err
+		}
+		if vm.Spec.Template == nil {
+			return fmt.Errorf("no template found")
+		}
+
+		saved.restore(&vm.Spec.Template.Spec.Domain.Devices)
+
+		_, err = m.virtClient.KubevirtV1().VirtualMachines(m.namespace).
+			Update(m.ctx, vm, metav1.UpdateOptions{})
+		return err
+	})
+}
+
+// bootOrders is a snapshot of the boot order of every interface and disk, keyed
+// by device name; a missing or nil entry means the device has no boot order.
+type bootOrders struct {
+	interfaces map[string]*uint
+	disks      map[string]*uint
+}
+
+func saveBootOrders(devices *kubevirtv1.Devices) bootOrders {
+	saved := bootOrders{
+		interfaces: make(map[string]*uint, len(devices.Interfaces)),
+		disks:      make(map[string]*uint, len(devices.Disks)),
+	}
+	for _, iface := range devices.Interfaces {
+		saved.interfaces[iface.Name] = iface.BootOrder
+	}
+	for _, disk := range devices.Disks {
+		saved.disks[disk.Name] = disk.BootOrder
+	}
+	return saved
+}
+
+func (b bootOrders) restore(devices *kubevirtv1.Devices) {
+	for i := range devices.Interfaces {
+		devices.Interfaces[i].BootOrder = b.interfaces[devices.Interfaces[i].Name]
+	}
+	for i := range devices.Disks {
+		devices.Disks[i].BootOrder = b.disks[devices.Disks[i].Name]
+	}
+}
+
+// bootFirst makes the device behind target boot first and the first other disk
+// the fallback, clearing every other boot order. A network source resolves to the
+// interface named oobInterface, or the first interface when there is none by
+// that name.
+func bootFirst(devices *kubevirtv1.Devices, target server.ComputerSystemBootSource, oobInterface string) error {
+	var first, second uint = 1, 2
+
+	var firstDisk *kubevirtv1.Disk
+	switch target {
+	case server.COMPUTERSYSTEMBOOTSOURCE_PXE, server.COMPUTERSYSTEMBOOTSOURCE_UEFI_HTTP:
+		if len(devices.Interfaces) == 0 {
+			return fmt.Errorf("no interfaces found")
+		}
+		idx := slices.IndexFunc(devices.Interfaces, func(i kubevirtv1.Interface) bool { return i.Name == oobInterface })
+		if idx < 0 {
+			idx = 0
+		}
+		clearBootOrders(devices)
+		devices.Interfaces[idx].BootOrder = &first
+	case server.COMPUTERSYSTEMBOOTSOURCE_CD:
+		cdrom, err := util.GetCdromDisk(devices.Disks)
+		if err != nil {
+			return fmt.Errorf("no cdrom found: %w", err)
+		}
+		clearBootOrders(devices)
+		cdrom.BootOrder = &first
+		firstDisk = cdrom
+	default:
+		return fmt.Errorf("unsupported boot source: %s", target)
+	}
+
+	for i := range devices.Disks {
+		if &devices.Disks[i] != firstDisk {
+			devices.Disks[i].BootOrder = &second
+			break
+		}
+	}
+
+	return nil
 }
 
 func (m *VirtualMachineResourceManager) detectBootMode(vm *kubevirtv1.VirtualMachine) server.ComputerSystemV1220BootSourceOverrideMode {
@@ -406,36 +569,72 @@ func (m *VirtualMachineResourceManager) detectBootMode(vm *kubevirtv1.VirtualMac
 	return server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEMODE_LEGACY
 }
 
-func (m *VirtualMachineResourceManager) IsDPU() bool {
-	return m.dpu
+func (m *VirtualMachineResourceManager) Identity() Identity {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	return m.identity
 }
 
-func (m *VirtualMachineResourceManager) DPUCard() string {
-	return m.dpuModel
+func (m *VirtualMachineResourceManager) SetMode(mode string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.identity.Mode = mode
 }
 
-func (m *VirtualMachineResourceManager) SystemOEM() (nicMode, baseMAC string) {
-	return m.nicMode, m.baseMAC
+func (m *VirtualMachineResourceManager) SetHostRshim(enabled bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.identity.HostRshim = hostRshimDisabled
+	if enabled {
+		m.identity.HostRshim = hostRshimEnabled
+	}
 }
 
-func (m *VirtualMachineResourceManager) AttachedDPUSerial() (string, bool) {
-	return m.pcieDeviceSerial, m.pcieDeviceSerial != ""
+func (m *VirtualMachineResourceManager) SetSecureBoot(enabled bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.identity.SecureBoot = enabled
 }
 
-func (m *VirtualMachineResourceManager) BMCFirmwareVersion() (string, bool) {
-	return m.bmcFirmwareVersion, m.bmcFirmwareVersion != ""
+func (m *VirtualMachineResourceManager) PasswordHash() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	return m.passwordHash
 }
 
-func (m *VirtualMachineResourceManager) CECFirmwareVersion() (string, bool) {
-	return m.cecFirmwareVersion, m.cecFirmwareVersion != ""
-}
+// SetPasswordHash persists the hash on the VM, so a rotated password survives a
+// restart of the BMC pod.
+func (m *VirtualMachineResourceManager) SetPasswordHash(hash string) error {
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		vm, err := m.virtClient.KubevirtV1().VirtualMachines(m.namespace).
+			Get(m.ctx, m.name, metav1.GetOptions{})
+		if err != nil {
+			return err
+		}
 
-func (m *VirtualMachineResourceManager) NICFirmwareVersion() (string, bool) {
-	return m.nicFirmwareVersion, m.nicFirmwareVersion != ""
-}
+		if vm.Annotations == nil {
+			vm.Annotations = map[string]string{}
+		}
+		vm.Annotations[annotationPasswordHash] = hash
 
-func (m *VirtualMachineResourceManager) HostBootMAC() (string, bool) {
-	return m.hostBootMAC, m.hostBootMAC != ""
+		_, err = m.virtClient.KubevirtV1().VirtualMachines(m.namespace).
+			Update(m.ctx, vm, metav1.UpdateOptions{})
+		return err
+	})
+	if err != nil {
+		return fmt.Errorf("failed to store password hash: %w", err)
+	}
+
+	m.mu.Lock()
+	m.passwordHash = hash
+	m.mu.Unlock()
+
+	return nil
 }
 
 func (m *VirtualMachineResourceManager) GetEthernetInterfaces() ([]EthernetInterfaceInterface, error) {
@@ -453,6 +652,8 @@ func (m *VirtualMachineResourceManager) GetEthernetInterfaces() ([]EthernetInter
 		return []EthernetInterfaceInterface{}, nil
 	}
 
+	identity := m.Identity()
+
 	running := vm.Status.Ready
 	var linkStatus server.EthernetInterfaceV1120LinkStatus
 	if running {
@@ -468,8 +669,16 @@ func (m *VirtualMachineResourceManager) GetEthernetInterfaces() ([]EthernetInter
 			continue
 		}
 
+		// NICo recognizes a DPU's OOB interface by "oob" in the Redfish id, whatever
+		// the VM calls the interface.
+		id := iface.Name
+		if identity.DPU && iface.Name == identity.OOBInterface {
+			id = oobEthernetInterfaceID
+		}
+
 		ethernetIface := NewEthernetInterface(
-			iface.Name,
+			identity.SystemID,
+			id,
 			iface.Name,
 			iface.MacAddress,
 			running,
@@ -483,11 +692,12 @@ func (m *VirtualMachineResourceManager) GetEthernetInterfaces() ([]EthernetInter
 	// path. The VM's real NICs (mgmt/fabric) do not match the DPU MAC, so nico
 	// ignores them; this synthetic one is what sets the host's primary/boot
 	// interface. Only when the boot MAC annotation is set (a DPU-backed host).
-	if !m.dpu && m.hostBootMAC != "" {
+	if !identity.DPU && identity.HostBootMAC != "" {
 		bootIface := NewEthernetInterface(
+			identity.SystemID,
 			hostBootInterfaceID,
 			hostBootInterfaceID,
-			m.hostBootMAC,
+			identity.HostBootMAC,
 			running,
 			linkStatus,
 		)
@@ -558,4 +768,48 @@ func (m *VirtualMachineResourceManager) SetBootDevice(bootDevice BootDevice) err
 	m.computerSystem.SetBootOverride(bootSourceMap[bootDevice])
 
 	return nil
+}
+
+func (m *VirtualMachineResourceManager) SetBootOnce(target server.ComputerSystemBootSource) error {
+	if m.computerSystem == nil {
+		return fmt.Errorf("computer system not initialized")
+	}
+
+	if target == server.COMPUTERSYSTEMBOOTSOURCE_HDD || target == server.COMPUTERSYSTEMBOOTSOURCE_NONE {
+		m.mu.Lock()
+		m.pendingBoot = ""
+		m.mu.Unlock()
+		m.computerSystem.ClearBootOverride()
+		return nil
+	}
+
+	// Resolve the target against the current VM spec now, so an override that
+	// cannot be applied is rejected here instead of failing the later restart.
+	vm, err := m.virtClient.KubevirtV1().VirtualMachines(m.namespace).
+		Get(m.ctx, m.name, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to get VM: %w", err)
+	}
+	if vm.Spec.Template == nil {
+		return fmt.Errorf("no template found")
+	}
+	if err := bootFirst(&vm.Spec.Template.Spec.Domain.Devices, target, m.Identity().OOBInterface); err != nil {
+		return err
+	}
+
+	m.mu.Lock()
+	m.pendingBoot = target
+	m.mu.Unlock()
+	m.computerSystem.SetBootOverrideOnce(target)
+
+	return nil
+}
+
+func clearBootOrders(devices *kubevirtv1.Devices) {
+	for i := range devices.Interfaces {
+		devices.Interfaces[i].BootOrder = nil
+	}
+	for i := range devices.Disks {
+		devices.Disks[i].BootOrder = nil
+	}
 }

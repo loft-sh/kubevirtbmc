@@ -87,13 +87,15 @@ func GetTokenFromSessionID(sessionID string) (TokenInfo, bool) {
 	return TokenInfo{}, false
 }
 
-func AuthMiddleware(bmcUser, bmcPassword string) func(next http.Handler) http.Handler {
+// AuthMiddleware authenticates basic auth credentials through verify, so the
+// accepted password can change at runtime, or a session token.
+func AuthMiddleware(verify func(username, password string) bool) func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			user, pass, ok := r.BasicAuth()
 
 			if ok {
-				if user != bmcUser || pass != bmcPassword {
+				if !verify(user, pass) {
 					w.Header().Set("WWW-Authenticate", `Basic realm="Redfish"`)
 					http.Error(w, "Unauthorized", http.StatusUnauthorized)
 					return

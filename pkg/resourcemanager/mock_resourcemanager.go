@@ -13,6 +13,7 @@ import (
 	reflect "reflect"
 
 	gomock "go.uber.org/mock/gomock"
+	server "kubevirt.io/kubevirtbmc/pkg/generated/redfish/server"
 )
 
 // MockResourceManager is a mock of ResourceManager interface.
@@ -128,6 +129,20 @@ func (mr *MockResourceManagerMockRecorder) GetVirtualMedia() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetVirtualMedia", reflect.TypeOf((*MockResourceManager)(nil).GetVirtualMedia))
 }
 
+// Identity mocks base method.
+func (m *MockResourceManager) Identity() Identity {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Identity")
+	ret0, _ := ret[0].(Identity)
+	return ret0
+}
+
+// Identity indicates an expected call of Identity.
+func (mr *MockResourceManagerMockRecorder) Identity() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Identity", reflect.TypeOf((*MockResourceManager)(nil).Identity))
+}
+
 // InsertMedia mocks base method.
 func (m *MockResourceManager) InsertMedia(arg0 string) error {
 	m.ctrl.T.Helper()
@@ -140,6 +155,20 @@ func (m *MockResourceManager) InsertMedia(arg0 string) error {
 func (mr *MockResourceManagerMockRecorder) InsertMedia(arg0 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InsertMedia", reflect.TypeOf((*MockResourceManager)(nil).InsertMedia), arg0)
+}
+
+// PasswordHash mocks base method.
+func (m *MockResourceManager) PasswordHash() string {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "PasswordHash")
+	ret0, _ := ret[0].(string)
+	return ret0
+}
+
+// PasswordHash indicates an expected call of PasswordHash.
+func (mr *MockResourceManagerMockRecorder) PasswordHash() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PasswordHash", reflect.TypeOf((*MockResourceManager)(nil).PasswordHash))
 }
 
 // PowerCycle mocks base method.
@@ -198,120 +227,66 @@ func (mr *MockResourceManagerMockRecorder) SetBootDevice(arg0 any) *gomock.Call 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetBootDevice", reflect.TypeOf((*MockResourceManager)(nil).SetBootDevice), arg0)
 }
 
-// IsDPU mocks base method.
-func (m *MockResourceManager) IsDPU() bool {
+// SetBootOnce mocks base method.
+func (m *MockResourceManager) SetBootOnce(arg0 server.ComputerSystemBootSource) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "IsDPU")
-	ret0, _ := ret[0].(bool)
+	ret := m.ctrl.Call(m, "SetBootOnce", arg0)
+	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// IsDPU indicates an expected call of IsDPU.
-func (mr *MockResourceManagerMockRecorder) IsDPU() *gomock.Call {
+// SetBootOnce indicates an expected call of SetBootOnce.
+func (mr *MockResourceManagerMockRecorder) SetBootOnce(arg0 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsDPU", reflect.TypeOf((*MockResourceManager)(nil).IsDPU))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetBootOnce", reflect.TypeOf((*MockResourceManager)(nil).SetBootOnce), arg0)
 }
 
-// DPUCard mocks base method.
-func (m *MockResourceManager) DPUCard() string {
+// SetHostRshim mocks base method.
+func (m *MockResourceManager) SetHostRshim(enabled bool) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DPUCard")
-	ret0, _ := ret[0].(string)
+	m.ctrl.Call(m, "SetHostRshim", enabled)
+}
+
+// SetHostRshim indicates an expected call of SetHostRshim.
+func (mr *MockResourceManagerMockRecorder) SetHostRshim(enabled any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetHostRshim", reflect.TypeOf((*MockResourceManager)(nil).SetHostRshim), enabled)
+}
+
+// SetMode mocks base method.
+func (m *MockResourceManager) SetMode(mode string) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "SetMode", mode)
+}
+
+// SetMode indicates an expected call of SetMode.
+func (mr *MockResourceManagerMockRecorder) SetMode(mode any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetMode", reflect.TypeOf((*MockResourceManager)(nil).SetMode), mode)
+}
+
+// SetPasswordHash mocks base method.
+func (m *MockResourceManager) SetPasswordHash(hash string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetPasswordHash", hash)
+	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// DPUCard indicates an expected call of DPUCard.
-func (mr *MockResourceManagerMockRecorder) DPUCard() *gomock.Call {
+// SetPasswordHash indicates an expected call of SetPasswordHash.
+func (mr *MockResourceManagerMockRecorder) SetPasswordHash(hash any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DPUCard", reflect.TypeOf((*MockResourceManager)(nil).DPUCard))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetPasswordHash", reflect.TypeOf((*MockResourceManager)(nil).SetPasswordHash), hash)
 }
 
-// SystemOEM mocks base method.
-func (m *MockResourceManager) SystemOEM() (string, string) {
+// SetSecureBoot mocks base method.
+func (m *MockResourceManager) SetSecureBoot(enabled bool) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SystemOEM")
-	ret0, _ := ret[0].(string)
-	ret1, _ := ret[1].(string)
-	return ret0, ret1
+	m.ctrl.Call(m, "SetSecureBoot", enabled)
 }
 
-// SystemOEM indicates an expected call of SystemOEM.
-func (mr *MockResourceManagerMockRecorder) SystemOEM() *gomock.Call {
+// SetSecureBoot indicates an expected call of SetSecureBoot.
+func (mr *MockResourceManagerMockRecorder) SetSecureBoot(enabled any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SystemOEM", reflect.TypeOf((*MockResourceManager)(nil).SystemOEM))
-}
-
-// AttachedDPUSerial mocks base method.
-func (m *MockResourceManager) AttachedDPUSerial() (string, bool) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AttachedDPUSerial")
-	ret0, _ := ret[0].(string)
-	ret1, _ := ret[1].(bool)
-	return ret0, ret1
-}
-
-// AttachedDPUSerial indicates an expected call of AttachedDPUSerial.
-func (mr *MockResourceManagerMockRecorder) AttachedDPUSerial() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AttachedDPUSerial", reflect.TypeOf((*MockResourceManager)(nil).AttachedDPUSerial))
-}
-
-// BMCFirmwareVersion mocks base method.
-func (m *MockResourceManager) BMCFirmwareVersion() (string, bool) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "BMCFirmwareVersion")
-	ret0, _ := ret[0].(string)
-	ret1, _ := ret[1].(bool)
-	return ret0, ret1
-}
-
-// BMCFirmwareVersion indicates an expected call of BMCFirmwareVersion.
-func (mr *MockResourceManagerMockRecorder) BMCFirmwareVersion() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BMCFirmwareVersion", reflect.TypeOf((*MockResourceManager)(nil).BMCFirmwareVersion))
-}
-
-// CECFirmwareVersion mocks base method.
-func (m *MockResourceManager) CECFirmwareVersion() (string, bool) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CECFirmwareVersion")
-	ret0, _ := ret[0].(string)
-	ret1, _ := ret[1].(bool)
-	return ret0, ret1
-}
-
-// CECFirmwareVersion indicates an expected call of CECFirmwareVersion.
-func (mr *MockResourceManagerMockRecorder) CECFirmwareVersion() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CECFirmwareVersion", reflect.TypeOf((*MockResourceManager)(nil).CECFirmwareVersion))
-}
-
-// NICFirmwareVersion mocks base method.
-func (m *MockResourceManager) NICFirmwareVersion() (string, bool) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "NICFirmwareVersion")
-	ret0, _ := ret[0].(string)
-	ret1, _ := ret[1].(bool)
-	return ret0, ret1
-}
-
-// NICFirmwareVersion indicates an expected call of NICFirmwareVersion.
-func (mr *MockResourceManagerMockRecorder) NICFirmwareVersion() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NICFirmwareVersion", reflect.TypeOf((*MockResourceManager)(nil).NICFirmwareVersion))
-}
-
-// HostBootMAC mocks base method.
-func (m *MockResourceManager) HostBootMAC() (string, bool) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "HostBootMAC")
-	ret0, _ := ret[0].(string)
-	ret1, _ := ret[1].(bool)
-	return ret0, ret1
-}
-
-// HostBootMAC indicates an expected call of HostBootMAC.
-func (mr *MockResourceManagerMockRecorder) HostBootMAC() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HostBootMAC", reflect.TypeOf((*MockResourceManager)(nil).HostBootMAC))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetSecureBoot", reflect.TypeOf((*MockResourceManager)(nil).SetSecureBoot), enabled)
 }

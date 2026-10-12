@@ -30,13 +30,28 @@ func NewHandler(bmcUser string, bmcPassword string, resourceManager resourcemana
 	}
 }
 
+// VerifyCredentials checks the basic auth credentials. Once a client has changed
+// the password through AccountService, only the new one is accepted; until then
+// it is the password the BMC was started with.
+func (h *handler) VerifyCredentials(username, password string) bool {
+	if username != h.bmcUser {
+		return false
+	}
+
+	if hash := h.rm.PasswordHash(); hash != "" {
+		return session.VerifyPassword(hash, password)
+	}
+
+	return password == h.bmcPassword
+}
+
 func (h *handler) Authenticate(username, password *string) (string, string, error) {
 	var id, token string
 	if username == nil || password == nil {
 		return id, token, fmt.Errorf("username and password must be provided")
 	}
 
-	if *username != h.bmcUser || *password != h.bmcPassword {
+	if !h.VerifyCredentials(*username, *password) {
 		return id, token, fmt.Errorf("invalid username or password")
 	}
 
@@ -60,36 +75,24 @@ func (h *handler) DeleteSession(sessionID string) {
 	session.RemoveToken(sessionID)
 }
 
+// GetServiceRoot reports the vendor and product from the identity. NVIDIA's
+// libredfish client selects its vendor client from them: only the BlueField one
+// reads NIC mode and base MAC from Systems/<id>/Oem/Nvidia, and an unrecognized
+// vendor skips its init path, so it never discovers the system and manager ids.
+// NICo's nv-redfish explorer additionally requires vendor "Nvidia" together with
+// system id "Bluefield" to classify a BMC as a BlueField, and skips the
+// Bluefield_ERoT chassis for product "BlueField-3 DPU".
 func (h *handler) GetServiceRoot() *server.ServiceRootV1161ServiceRoot {
-	// Report a known server vendor rather than "KubeVirt". NVIDIA's libredfish
-	// client (used by NICo) treats an unrecognized vendor as "Unknown" and then
-	// builds the exploration client without running its init path, so it never
-	// discovers the system/manager ids and fails. A recognized vendor takes the
-	// full-init path.
-	//
-	// A DPU must report "NVIDIA": libredfish selects its client by vendor, and
-	// only the NVIDIA (BlueField) client reads NIC mode and base MAC from
-	// Systems/<id>/Oem/Nvidia. Under any other vendor those calls hit the
-	// standard stubs (NotSupported / None), so nico can't determine NIC mode or
-	// base MAC. Both the NVIDIA and HPE clients delegate the remaining
-	// exploration reads to the standard Redfish paths this emulator implements.
-	//
-	// A host (non-DPU) reports "HPE": it has no OEM resource, and the HPE client
-	// reads PCIe devices via Chassis/<id>/PCIeDevices, which is how the host
-	// surfaces its attached DPU's serial.
-	vendor := "HPE"
-	if h.rm.IsDPU() {
-		vendor = "NVIDIA"
-	}
+	id := h.rm.Identity()
 
-	return &server.ServiceRootV1161ServiceRoot{
+	root := &server.ServiceRootV1161ServiceRoot{
 		OdataContext:   "/redfish/v1/$metadata#ServiceRoot.ServiceRoot",
 		OdataId:        "/redfish/v1",
 		OdataType:      "#ServiceRoot.v1_16_1.ServiceRoot",
 		Description:    "ServiceRoot",
 		Name:           "ServiceRoot",
 		RedfishVersion: "1.16.1",
-		Vendor:         util.Ptr(vendor),
+		Vendor:         util.Ptr(id.Vendor),
 		UUID:           util.Ptr("00000000-0000-0000-0000-000000000000"),
 		Chassis: server.OdataV4IdRef{
 			OdataId: "/redfish/v1/Chassis",
@@ -110,7 +113,7 @@ func (h *handler) GetServiceRoot() *server.ServiceRootV1161ServiceRoot {
 			OdataId: "/redfish/v1/Tasks",
 		},
 		AccountService: server.OdataV4IdRef{
-			OdataId: "/redfish/v1/AccountService",
+			OdataId: accountServicePath,
 		},
 		EventService: server.OdataV4IdRef{
 			OdataId: "/redfish/v1/EventService",
@@ -127,7 +130,7 @@ func (h *handler) GetServiceRoot() *server.ServiceRootV1161ServiceRoot {
 		ProtocolFeaturesSupported: server.ServiceRootV1161ProtocolFeaturesSupported{},
 		Links: server.ServiceRootV1161Links{
 			ManagerProvidingService: server.OdataV4IdRef{
-				OdataId: "/redfish/v1/Managers/BMC",
+				OdataId: fmt.Sprintf("/redfish/v1/Managers/%s", id.ManagerID),
 			},
 			Oem: map[string]interface{}{},
 			Sessions: server.OdataV4IdRef{
@@ -135,6 +138,11 @@ func (h *handler) GetServiceRoot() *server.ServiceRootV1161ServiceRoot {
 			},
 		},
 	}
+	if id.Product != "" {
+		root.Product = util.Ptr(id.Product)
+	}
+
+	return root
 }
 
 func (h *handler) GetManagerCollection() *server.ManagerCollectionManagerCollection {
@@ -146,7 +154,7 @@ func (h *handler) GetManagerCollection() *server.ManagerCollectionManagerCollect
 		Name:         "Manager Collection",
 		Members: []server.OdataV4IdRef{
 			{
-				OdataId: "/redfish/v1/Managers/BMC",
+				OdataId: fmt.Sprintf("/redfish/v1/Managers/%s", h.rm.Identity().ManagerID),
 			},
 		},
 		MembersodataCount: 1,
@@ -170,33 +178,40 @@ func (h *handler) GetManager() (*server.ManagerV1190Manager, error) {
 	// (hard ±300s) always sees a current time, regardless of BMC pod age.
 	mgr.DateTime = util.Ptr(time.Now())
 
+	// A DPU reports its BMC firmware version.
+	//
 	// A host reports the iLO firmware version and Oem.Hpe.VirtualNICEnabled that
 	// nico's HPE client reads: lockdown_status treats the BMC as "fully disabled"
 	// only when VirtualNICEnabled is true (together with Bios UsbBoot "Enabled"),
-	// which keeps HostInit out of the WaitingForLockdown detour. A DPU manager is
-	// left untouched.
-	if !h.rm.IsDPU() {
-		mgr.FirmwareVersion = util.Ptr(hostManagerFirmwareVersion)
-		mgr.Oem = map[string]interface{}{
-			"Hpe": map[string]interface{}{
-				"VirtualNICEnabled": true,
-			},
-		}
+	// which keeps HostInit out of the WaitingForLockdown detour.
+	id := h.rm.Identity()
+	if id.DPU {
+		mgr.FirmwareVersion = util.Ptr(id.BMCFirmware)
+		return mgr, nil
+	}
+
+	mgr.FirmwareVersion = util.Ptr(hostManagerFirmwareVersion)
+	mgr.Oem = map[string]interface{}{
+		"Hpe": map[string]interface{}{
+			"VirtualNICEnabled": true,
+		},
 	}
 
 	return mgr, nil
 }
 
 func (h *handler) GetVirtualMediaCollection() *server.VirtualMediaCollectionVirtualMediaCollection {
+	managerID := h.rm.Identity().ManagerID
+
 	return &server.VirtualMediaCollectionVirtualMediaCollection{
 		OdataContext: "/redfish/v1/$metadata#VirtualMediaCollection.VirtualMediaCollection",
-		OdataId:      "/redfish/v1/Managers/BMC/VirtualMedia",
+		OdataId:      fmt.Sprintf("/redfish/v1/Managers/%s/VirtualMedia", managerID),
 		OdataType:    "#VirtualMediaCollection.VirtualMediaCollection",
 		Description:  "Virtual Media Collection",
 		Name:         "Virtual Media Collection",
 		Members: []server.OdataV4IdRef{
 			{
-				OdataId: "/redfish/v1/Managers/BMC/VirtualMedia/CD1",
+				OdataId: fmt.Sprintf("/redfish/v1/Managers/%s/VirtualMedia/CD1", managerID),
 			},
 		},
 		MembersodataCount: 1,
@@ -226,13 +241,6 @@ func (h *handler) VirtualMediaInsert(image string) error {
 }
 
 func (h *handler) GetComputerSystemCollection() *server.ComputerSystemCollectionComputerSystemCollection {
-	// The member id must match the ComputerSystem's own id so a DPU is listed as
-	// "Bluefield" rather than the default "1".
-	systemID := defaultComputerSystemId
-	if h.rm.IsDPU() {
-		systemID = bluefieldComputerSystemId
-	}
-
 	return &server.ComputerSystemCollectionComputerSystemCollection{
 		OdataContext: "/redfish/v1/$metadata#ComputerSystemCollection.ComputerSystemCollection",
 		OdataId:      "/redfish/v1/Systems",
@@ -241,7 +249,7 @@ func (h *handler) GetComputerSystemCollection() *server.ComputerSystemCollection
 		Name:         "Computer System Collection",
 		Members: []server.OdataV4IdRef{
 			{
-				OdataId: fmt.Sprintf("/redfish/v1/Systems/%s", systemID),
+				OdataId: fmt.Sprintf("/redfish/v1/Systems/%s", h.rm.Identity().SystemID),
 			},
 		},
 		MembersodataCount: 1,
@@ -265,10 +273,9 @@ func (h *handler) GetComputerSystem() (*server.ComputerSystemV1220ComputerSystem
 	// BootOrder[0] must equal the BootOptionReference of the HTTP/IPv4 boot option
 	// for the boot NIC. The reorder nico issues (PATCH Systems/1) is a no-op here,
 	// so BootOrder[0] must already be that reference.
-	if !h.rm.IsDPU() {
-		if _, ok := h.rm.HostBootMAC(); ok {
-			cs.Boot.BootOrder = []*string{util.Ptr(hostBootOptionReference)}
-		}
+	id := h.rm.Identity()
+	if !id.DPU && id.HostBootMAC != "" {
+		cs.Boot.BootOrder = []*string{util.Ptr(hostBootOptionReference)}
 	}
 
 	return cs, nil
@@ -276,25 +283,34 @@ func (h *handler) GetComputerSystem() (*server.ComputerSystemV1220ComputerSystem
 
 func (h *handler) PatchComputerSystem(computerSystemPatch *server.ComputerSystemV1220ComputerSystem) error {
 	boot := computerSystemPatch.Boot
-	if boot.BootSourceOverrideEnabled != server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEENABLED_DISABLED {
-		var bootDevice resourcemanager.BootDevice
 
-		switch boot.BootSourceOverrideTarget {
-		case server.COMPUTERSYSTEMBOOTSOURCE_PXE:
-			bootDevice = resourcemanager.BootDevicePxe
-		case server.COMPUTERSYSTEMBOOTSOURCE_HDD:
-			bootDevice = resourcemanager.BootDeviceHdd
-		case server.COMPUTERSYSTEMBOOTSOURCE_CD:
-			bootDevice = resourcemanager.BootDeviceCd
-		default:
-			return nil
-		}
+	return h.setBootOverride(boot.BootSourceOverrideEnabled, boot.BootSourceOverrideTarget)
+}
 
-		if err := h.rm.SetBootDevice(bootDevice); err != nil {
-			return err
-		}
+// setBootOverride applies a Redfish boot source override. Once arms a one-time
+// boot that the next restart consumes, Disabled cancels it, and anything else is
+// a persistent boot device.
+func (h *handler) setBootOverride(enabled server.ComputerSystemV1220BootSourceOverrideEnabled, target server.ComputerSystemBootSource) error {
+	switch enabled {
+	case server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEENABLED_ONCE:
+		return h.rm.SetBootOnce(target)
+	case server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEENABLED_DISABLED:
+		return h.rm.SetBootOnce(server.COMPUTERSYSTEMBOOTSOURCE_NONE)
 	}
-	return nil
+
+	var bootDevice resourcemanager.BootDevice
+	switch target {
+	case server.COMPUTERSYSTEMBOOTSOURCE_PXE:
+		bootDevice = resourcemanager.BootDevicePxe
+	case server.COMPUTERSYSTEMBOOTSOURCE_HDD:
+		bootDevice = resourcemanager.BootDeviceHdd
+	case server.COMPUTERSYSTEMBOOTSOURCE_CD:
+		bootDevice = resourcemanager.BootDeviceCd
+	default:
+		return nil
+	}
+
+	return h.rm.SetBootDevice(bootDevice)
 }
 
 func (h *handler) ComputerSystemReset(resetType server.ResourceResetType) error {
@@ -339,7 +355,7 @@ func (h *handler) GetEthernetInterfaceCollection() (*server.EthernetInterfaceCol
 
 	return &server.EthernetInterfaceCollectionEthernetInterfaceCollection{
 		OdataContext:      "/redfish/v1/$metadata#EthernetInterfaceCollection.EthernetInterfaceCollection",
-		OdataId:           "/redfish/v1/Systems/1/EthernetInterfaces",
+		OdataId:           fmt.Sprintf("/redfish/v1/Systems/%s/EthernetInterfaces", h.rm.Identity().SystemID),
 		OdataType:         "#EthernetInterfaceCollection.EthernetInterfaceCollection",
 		Name:              "Ethernet Interface Collection",
 		Members:           members,
@@ -370,16 +386,22 @@ func (h *handler) GetEthernetInterface(interfaceId string) (*server.EthernetInte
 // DPU. Its serial number is what NICo matches against the DPU's system serial.
 const dpuPCIeDeviceID = "DPU"
 
+// defaultChassisId is the enclosure every BMC serves; a DPU additionally serves
+// the dpuCardChassisId ("Card1") chassis NVIDIA's clients read the BlueField
+// model and part number from.
+const (
+	defaultChassisId = "1"
+	dpuCardChassisId = "Card1"
+)
+
 func (h *handler) GetChassisCollection() *server.ChassisCollectionChassisCollection {
 	members := []server.OdataV4IdRef{
 		{
-			OdataId: "/redfish/v1/Chassis/1",
+			OdataId: fmt.Sprintf("/redfish/v1/Chassis/%s", defaultChassisId),
 		},
 	}
 
-	// A DPU additionally exposes the "Card1" chassis NVIDIA's clients read the
-	// BlueField model from.
-	if h.rm.IsDPU() {
+	if h.rm.Identity().DPU {
 		members = append(members, server.OdataV4IdRef{
 			OdataId: fmt.Sprintf("/redfish/v1/Chassis/%s", dpuCardChassisId),
 		})
@@ -400,15 +422,13 @@ func (h *handler) GetChassisCollection() *server.ChassisCollectionChassisCollect
 // the system id so the standard Redfish client's default PCIe lookup
 // (Chassis/{system_id}/PCIeDevices) resolves; on a host with an attached DPU the
 // PCIeDevices reference is set so that lookup is followed. For a DPU, the "Card1"
-// chassis carries the BlueField model NVIDIA's clients classify on. References
-// left unset are dropped by sanitize so clients see them as absent rather than an
-// empty reference missing its required @odata.id.
+// chassis carries the BlueField model, part number and serial NVIDIA's clients
+// classify on. References left unset are dropped by sanitize so clients see them
+// as absent rather than an empty reference missing its required @odata.id.
 func (h *handler) GetChassis(chassisID string) *server.ChassisV1250Chassis {
-	if h.rm.IsDPU() && chassisID == dpuCardChassisId {
-		model := h.rm.DPUCard()
-		if model == "" {
-			model = defaultDPUCardModel
-		}
+	id := h.rm.Identity()
+
+	if id.DPU && chassisID == dpuCardChassisId {
 		return &server.ChassisV1250Chassis{
 			OdataContext: "/redfish/v1/$metadata#Chassis.Chassis",
 			OdataId:      fmt.Sprintf("/redfish/v1/Chassis/%s", chassisID),
@@ -416,8 +436,10 @@ func (h *handler) GetChassis(chassisID string) *server.ChassisV1250Chassis {
 			Id:           chassisID,
 			Name:         "Network Adapter Card",
 			ChassisType:  server.CHASSISV1250CHASSISTYPE_CARD,
-			Manufacturer: util.Ptr("NVIDIA"),
-			Model:        util.Ptr(model),
+			Manufacturer: util.Ptr(id.Manufacturer),
+			Model:        util.Ptr(id.DPUModel),
+			PartNumber:   util.Ptr(id.PartNumber),
+			SerialNumber: util.Ptr(id.SystemSerial),
 		}
 	}
 
@@ -428,12 +450,12 @@ func (h *handler) GetChassis(chassisID string) *server.ChassisV1250Chassis {
 		Id:           chassisID,
 		Name:         "Computer System Chassis",
 		ChassisType:  server.CHASSISV1250CHASSISTYPE_RACK_MOUNT,
-		Manufacturer: util.Ptr("KubeVirt"),
+		Manufacturer: util.Ptr(id.Manufacturer),
 	}
 
 	// A host with an attached DPU points at its PCIe inventory so the Redfish
 	// client follows the link and reads the DPU device beneath it.
-	if _, ok := h.rm.AttachedDPUSerial(); ok {
+	if id.PCIeDeviceSerial != "" {
 		chassis.PCIeDevices = server.OdataV4IdRef{
 			OdataId: fmt.Sprintf("/redfish/v1/Chassis/%s/PCIeDevices", chassisID),
 		}
@@ -446,7 +468,7 @@ func (h *handler) GetPCIeDeviceCollection(chassisID string) *server.PcieDeviceCo
 	// Empty array, not null: the Redfish client deserializes Members into a Vec
 	// and rejects null.
 	members := []server.OdataV4IdRef{}
-	if _, ok := h.rm.AttachedDPUSerial(); ok {
+	if h.rm.Identity().PCIeDeviceSerial != "" {
 		members = append(members, server.OdataV4IdRef{
 			OdataId: fmt.Sprintf("/redfish/v1/Chassis/%s/PCIeDevices/%s", chassisID, dpuPCIeDeviceID),
 		})
@@ -466,8 +488,8 @@ func (h *handler) GetPCIeDeviceCollection(chassisID string) *server.PcieDeviceCo
 // the match key NICo correlates against the DPU's system serial; Status must be
 // present or some Redfish clients drop the device entirely.
 func (h *handler) GetPCIeDevice(chassisID, deviceID string) (*server.PcieDeviceV1130PcieDevice, error) {
-	serial, ok := h.rm.AttachedDPUSerial()
-	if !ok || deviceID != dpuPCIeDeviceID {
+	id := h.rm.Identity()
+	if id.PCIeDeviceSerial == "" || deviceID != dpuPCIeDeviceID {
 		return nil, fmt.Errorf("pcie device not found: %s", deviceID)
 	}
 
@@ -477,9 +499,9 @@ func (h *handler) GetPCIeDevice(chassisID, deviceID string) (*server.PcieDeviceV
 		OdataType:    "#PCIeDevice.v1_13_0.PCIeDevice",
 		Id:           deviceID,
 		Name:         "BlueField DPU",
-		Manufacturer: util.Ptr("NVIDIA"),
-		PartNumber:   util.Ptr("BlueField"),
-		SerialNumber: util.Ptr(serial),
+		Manufacturer: util.Ptr(id.PCIeDeviceManufacturer),
+		PartNumber:   util.Ptr(id.PCIeDevicePartNumber),
+		SerialNumber: util.Ptr(id.PCIeDeviceSerial),
 		Status: server.ResourceStatus{
 			State:  util.Ptr(server.RESOURCESTATE_ENABLED),
 			Health: util.Ptr(server.RESOURCEHEALTH_OK),
@@ -487,47 +509,37 @@ func (h *handler) GetPCIeDevice(chassisID, deviceID string) (*server.PcieDeviceV
 	}, nil
 }
 
-// dpuBMCFirmwareID, dpuCECFirmwareID and dpuNICFirmwareID are the FirmwareInventory
-// member ids nico matches by substring while driving a DPU. BMC_Firmware is read
-// during discovery (dpu_bmc_version) and, together with the CEC (Bluefield_FW_ERoT)
-// and NIC (DPU_NIC) members, during WaitingForPlatformConfiguration by
-// check_fw_component_version, which EXACT-matches each Version against nico's
-// hardware_models config for the DPU model and parks the DPU forever on a mismatch.
+// The FirmwareInventory member ids NICo reads while driving a DPU. BMC_Firmware
+// is read during discovery (dpu_bmc_version); together with the CEC
+// (Bluefield_FW_ERoT), NIC (DPU_NIC) and UEFI (DPU_UEFI) members it is
+// EXACT-matched by check_fw_component_version against NICo's hardware_models
+// config, which parks the DPU forever on a mismatch. DPU_SYS_IMAGE carries the
+// base MAC and DPU_BSP the BSP release. Every version is annotation-driven.
 const (
-	dpuBMCFirmwareID = "BMC_Firmware"
-	dpuCECFirmwareID = "Bluefield_FW_ERoT"
-	dpuNICFirmwareID = "DPU_NIC"
+	dpuBMCFirmwareID      = "BMC_Firmware"
+	dpuCECFirmwareID      = "Bluefield_FW_ERoT"
+	dpuNICFirmwareID      = "DPU_NIC"
+	dpuUEFIFirmwareID     = "DPU_UEFI"
+	dpuSysImageFirmwareID = "DPU_SYS_IMAGE"
+	dpuBSPFirmwareID      = "DPU_BSP"
 )
 
-// Default firmware versions, reported when the corresponding annotation is unset.
-// They mirror nico's built-in hardware_models defaults for bluefield3 so
-// check_fw_component_version's exact match passes out of the box; the deployed
-// nico-api may override hardware_models, so each is annotation-overridable and
-// lab-setup reconciles them to the live config at deploy.
-//
-// The BMC version doubles as the discovery-era value and must stay in the
-// "BF-XX.YY-Z" form: nico's nic-mode query is gated by version_compare against
-// "BF-23.10-5" (libredfish nvidia_dpu nic_mode_unsupported) and a non-"BF-" or
-// dot-form string compares below it, so nico logs "cannot query nic mode" and
-// never reads the OEM Mode. "BF-25.10-20" clears that gate, passes
-// supports_bfb_install (strips "bf-" then compares >= 24.10) and matches the
-// hardware_models default in one value.
-const (
-	defaultBMCFirmwareVersion = "BF-25.10-20"
-	defaultCECFirmwareVersion = "00.02.0195.0000_n02"
-	defaultNICFirmwareVersion = "32.47.2682"
-)
+var dpuFirmwareIDs = []string{
+	dpuBMCFirmwareID,
+	dpuCECFirmwareID,
+	dpuNICFirmwareID,
+	dpuUEFIFirmwareID,
+	dpuSysImageFirmwareID,
+	dpuBSPFirmwareID,
+}
 
 func (h *handler) GetFirmwareInventoryCollection() *server.SoftwareInventoryCollectionSoftwareInventoryCollection {
-	// Only a DPU advertises firmware: nico reads BMC_Firmware to gate BFB install
-	// during discovery, and BMC_Firmware + Bluefield_FW_ERoT + DPU_NIC during
-	// WaitingForPlatformConfiguration (check_fw_component_version). Non-DPU VMs keep
-	// an empty inventory. Members must serialize as an empty array, not null: the
-	// Redfish client deserializes it into a Vec and rejects null (fails the whole
-	// host exploration).
+	// Only a DPU advertises firmware; a non-DPU keeps an empty inventory. Members
+	// must serialize as an empty array, not null: the Redfish client deserializes
+	// it into a Vec and rejects null (fails the whole host exploration).
 	members := []server.OdataV4IdRef{}
-	if h.rm.IsDPU() {
-		for _, id := range []string{dpuBMCFirmwareID, dpuCECFirmwareID, dpuNICFirmwareID} {
+	if h.rm.Identity().DPU {
+		for _, id := range dpuFirmwareIDs {
 			members = append(members, server.OdataV4IdRef{
 				OdataId: fmt.Sprintf("/redfish/v1/UpdateService/FirmwareInventory/%s", id),
 			})
@@ -545,37 +557,25 @@ func (h *handler) GetFirmwareInventoryCollection() *server.SoftwareInventoryColl
 }
 
 func (h *handler) GetFirmwareInventory(inventoryID string) (*server.SoftwareInventoryV1101SoftwareInventory, error) {
-	// nico reads these versions to gate BFB install (BMC_Firmware, >= 24.10) and to
-	// verify firmware in check_fw_component_version, which EXACT-matches each against
-	// its hardware_models config. Each is annotation-driven with a default that
-	// mirrors nico's config. Only a DPU exposes them.
-	if !h.rm.IsDPU() {
+	id := h.rm.Identity()
+	if !id.DPU {
 		return nil, fmt.Errorf("unknown firmware inventory id: %s", inventoryID)
 	}
 
 	var name, version string
 	switch inventoryID {
 	case dpuBMCFirmwareID:
-		name = "BMC Firmware"
-		if v, ok := h.rm.BMCFirmwareVersion(); ok {
-			version = v
-		} else {
-			version = defaultBMCFirmwareVersion
-		}
+		name, version = "BMC Firmware", id.BMCFirmware
 	case dpuCECFirmwareID:
-		name = "ERoT Firmware"
-		if v, ok := h.rm.CECFirmwareVersion(); ok {
-			version = v
-		} else {
-			version = defaultCECFirmwareVersion
-		}
+		name, version = "ERoT Firmware", id.CECFirmware
 	case dpuNICFirmwareID:
-		name = "NIC Firmware"
-		if v, ok := h.rm.NICFirmwareVersion(); ok {
-			version = v
-		} else {
-			version = defaultNICFirmwareVersion
-		}
+		name, version = "NIC Firmware", id.NICFirmware
+	case dpuUEFIFirmwareID:
+		name, version = "UEFI Firmware", id.UEFIFirmware
+	case dpuSysImageFirmwareID:
+		name, version = "System Image", id.SysImageFirmware
+	case dpuBSPFirmwareID:
+		name, version = "BSP Firmware", id.BSPFirmware
 	default:
 		return nil, fmt.Errorf("unknown firmware inventory id: %s", inventoryID)
 	}
@@ -594,20 +594,6 @@ func (h *handler) GetFirmwareInventory(inventoryID string) (*server.SoftwareInve
 // no-op here: there is nothing to track, so SimpleUpdate and every task lookup
 // resolve to the same already-completed task.
 const bfbTaskID = "1"
-
-// bluefieldComputerSystemId is the ComputerSystem id a DPU presents (NVIDIA's
-// clients match it case-sensitively); dpuCardChassisId is the chassis id they
-// read the BlueField model from. Both mirror the resourcemanager constants.
-const (
-	defaultComputerSystemId   = "1"
-	bluefieldComputerSystemId = "Bluefield"
-	dpuCardChassisId          = "Card1"
-)
-
-// defaultDPUCardModel is the Card1 model reported when a DPU has no dpu-model
-// annotation. It mirrors bmc-mock; it classifies as DpuModel::Unknown (no space
-// before "3"), which is benign — identify_dpu() gates only on the system id.
-const defaultDPUCardModel = "BlueField-3 DPU"
 
 func (h *handler) GetUpdateService() *server.UpdateServiceV1130UpdateService {
 	return &server.UpdateServiceV1130UpdateService{
@@ -681,31 +667,28 @@ func (h *handler) GetTaskCollection() *server.TaskCollectionTaskCollection {
 	}
 }
 
-// GetSystemOEM returns the NVIDIA OEM resource NICo reads the DPU's NIC mode and
-// base MAC from (GET /redfish/v1/Systems/Bluefield/Oem/Nvidia). The Redfish spec
-// has no generated route for this vendor resource, so it is served via a custom
-// route registered in the emulator. Mode is reported in the DpuMode/NicMode form
-// libredfish parses; BaseMAC is the pf0 MAC with colons stripped.
+// HandleSystemOEM returns the NVIDIA OEM resource NICo reads the DPU's NIC mode,
+// base MAC and host rshim state from (GET /redfish/v1/Systems/Bluefield/Oem/Nvidia).
+// The Redfish spec has no generated route for this vendor resource, so it is
+// served via a custom route registered in the emulator. Mode is reported in the
+// DpuMode/NicMode form libredfish parses; BaseMAC is the pf0 MAC with colons
+// stripped.
 func (h *handler) HandleSystemOEM(w http.ResponseWriter, r *http.Request) {
-	if !h.rm.IsDPU() {
+	id := h.rm.Identity()
+	if !id.DPU {
 		http.Error(w, "not found", http.StatusNotFound)
 		return
-	}
-
-	nicMode, baseMAC := h.rm.SystemOEM()
-	mode := "DpuMode"
-	if strings.EqualFold(nicMode, "nic") {
-		mode = "NicMode"
 	}
 
 	// Mirror nico's reference mock (bmc-mock NvidiaComputerSystem) field-for-field,
 	// including @odata.type. (The deserializer reads into a generic map and does not
 	// require @odata.type, but matching the reference avoids any client that does.)
 	body := map[string]interface{}{
-		"@odata.id":   fmt.Sprintf("/redfish/v1/Systems/%s/Oem/Nvidia", bluefieldComputerSystemId),
+		"@odata.id":   fmt.Sprintf("/redfish/v1/Systems/%s/Oem/Nvidia", id.SystemID),
 		"@odata.type": "#NvidiaComputerSystem.v1_0_0.NvidiaComputerSystem",
-		"Mode":        mode,
-		"BaseMAC":     strings.ReplaceAll(baseMAC, ":", ""),
+		"Mode":        id.Mode,
+		"BaseMAC":     strings.ReplaceAll(id.BaseMAC, ":", ""),
+		"HostRshim":   id.HostRshim,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -732,27 +715,35 @@ const (
 	hostManagerFirmwareVersion = "iLO 6 v1.58"
 	hostBootOptionId           = "1"
 	hostBootOptionReference    = "Boot0001"
+
+	valueEnabled = "Enabled"
 )
 
-// GetSecureBoot reports UEFI Secure Boot as already disabled on a DPU. nico's
-// machine-controller (CheckSecureBootStatus) reads both SecureBootEnable and
-// SecureBootCurrentBoot; if either is absent it treats the response as the known
-// BlueField "incomplete SecureBoot after UEFI client" race and force-restarts the
-// DPU up to ten times before erroring. Reporting both as disabled makes it skip
-// the disable/reboot loop straight to SetUefiHttpBoot. Only a DPU serves this.
+// GetSecureBoot reports the DPU's UEFI Secure Boot state. nico's machine-controller
+// (CheckSecureBootStatus) reads both SecureBootEnable and SecureBootCurrentBoot;
+// if either is absent it treats the response as the known BlueField "incomplete
+// SecureBoot after UEFI client" race and force-restarts the DPU up to ten times
+// before erroring. The current boot state follows the setting immediately instead
+// of after the next boot, since the shim has no real boot. Only a DPU serves this.
 func (h *handler) GetSecureBoot() (*server.SecureBootV111SecureBoot, error) {
-	if !h.rm.IsDPU() {
+	id := h.rm.Identity()
+	if !id.DPU {
 		return nil, fmt.Errorf("secure boot not supported")
+	}
+
+	currentBoot := server.SECUREBOOTV111SECUREBOOTCURRENTBOOTTYPE_DISABLED
+	if id.SecureBoot {
+		currentBoot = server.SECUREBOOTV111SECUREBOOTCURRENTBOOTTYPE_ENABLED
 	}
 
 	return &server.SecureBootV111SecureBoot{
 		OdataContext:          "/redfish/v1/$metadata#SecureBoot.SecureBoot",
-		OdataId:               fmt.Sprintf("/redfish/v1/Systems/%s/SecureBoot", bluefieldComputerSystemId),
+		OdataId:               fmt.Sprintf("/redfish/v1/Systems/%s/SecureBoot", id.SystemID),
 		OdataType:             "#SecureBoot.v1_1_1.SecureBoot",
 		Id:                    dpuSecureBootID,
 		Name:                  "UEFI Secure Boot",
-		SecureBootEnable:      util.Ptr(false),
-		SecureBootCurrentBoot: server.SECUREBOOTV111SECUREBOOTCURRENTBOOTTYPE_DISABLED,
+		SecureBootEnable:      util.Ptr(id.SecureBoot),
+		SecureBootCurrentBoot: currentBoot,
 	}, nil
 }
 
@@ -761,18 +752,23 @@ func (h *handler) GetSecureBoot() (*server.SecureBootV111SecureBoot, error) {
 // "Restricted" and InternalCPUModel "Embedded" before advancing the DPU to
 // WaitingForNetworkConfig. The shim models no real BIOS, so it reports the
 // already-applied values; the writes that would set them (Bios/Settings) are
-// accepted as no-ops. Only a DPU serves this.
+// accepted as no-ops. NicMode follows the Mode.Set state for clients that read
+// the mode from the BIOS.
 func (h *handler) GetBios() (*server.BiosV122Bios, error) {
-	if h.rm.IsDPU() {
+	id := h.rm.Identity()
+
+	if id.DPU {
 		return &server.BiosV122Bios{
 			OdataContext: "/redfish/v1/$metadata#Bios.Bios",
-			OdataId:      fmt.Sprintf("/redfish/v1/Systems/%s/Bios", bluefieldComputerSystemId),
+			OdataId:      fmt.Sprintf("/redfish/v1/Systems/%s/Bios", id.SystemID),
 			OdataType:    "#Bios.v1_2_2.Bios",
 			Id:           dpuBiosID,
 			Name:         "BIOS Configuration",
 			Attributes: map[string]interface{}{
-				"HostPrivilegeLevel": biosHostPrivilegeLevel,
-				"InternalCPUModel":   biosInternalCPUModel,
+				"NicMode":             id.Mode,
+				"HostPrivilegeLevel":  biosHostPrivilegeLevel,
+				"InternalCPUModel":    biosInternalCPUModel,
+				"CurrentUefiPassword": "",
 			},
 		}, nil
 	}
@@ -789,30 +785,28 @@ func (h *handler) GetBios() (*server.BiosV122Bios, error) {
 	// No Actions block is served, so nico's UEFI-password step no-ops cleanly.
 	return &server.BiosV122Bios{
 		OdataContext: "/redfish/v1/$metadata#Bios.Bios",
-		OdataId:      fmt.Sprintf("/redfish/v1/Systems/%s/Bios", defaultComputerSystemId),
+		OdataId:      fmt.Sprintf("/redfish/v1/Systems/%s/Bios", id.SystemID),
 		OdataType:    "#Bios.v1_2_2.Bios",
 		Id:           dpuBiosID,
 		Name:         "BIOS Configuration",
 		Attributes: map[string]interface{}{
-			"UsbBoot":            "Enabled",
-			"ProcVirtualization": "Enabled",
-			"Dhcpv4":             "Enabled",
+			"UsbBoot":            valueEnabled,
+			"ProcVirtualization": valueEnabled,
+			"Dhcpv4":             valueEnabled,
 			"HttpSupport":        "Auto",
 		},
 	}, nil
 }
 
-// HandleDPUConfigNoop accepts the DPU BIOS/boot mutations nico issues while
-// driving a DPU to WaitingForNetworkConfig: the boot-source override
-// (Systems/<id>/Settings), the BIOS attribute writes (Systems/<id>/Bios/Settings)
-// and the host-rshim action (Systems/<id>/Oem/Nvidia/Actions/HostRshim.Set). The
-// shim models no real BIOS, so the values nico reads back (SecureBoot, Bios
-// Attributes, BootProgress) are served statically and these writes have nothing to
-// persist; they are acknowledged with 204. None of these paths have a route in the
-// generated Redfish router, so they are registered directly in the emulator. A
-// non-DPU BMC never receives them.
+// HandleDPUConfigNoop accepts the DPU BIOS/BMC mutations nico issues while
+// driving a DPU to WaitingForNetworkConfig that have nothing to persist: the BIOS
+// attribute writes (Systems/<id>/Bios/Settings), whose values are served as
+// already applied, the BMC rshim enable (Managers/<id>/Oem/Nvidia) and the
+// AccountService lockout writes. They are acknowledged with 204. None of these
+// paths have a usable route in the generated Redfish router, so they are
+// registered directly in the emulator. A non-DPU BMC never receives them.
 func (h *handler) HandleDPUConfigNoop(w http.ResponseWriter, r *http.Request) {
-	if !h.rm.IsDPU() {
+	if !h.rm.Identity().DPU {
 		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}
@@ -842,20 +836,21 @@ func (h *handler) GetManagerNetworkProtocol(managerID string) *server.ManagerNet
 // boot NIC MAC. Host-only, and only when the boot MAC is known; a DPU never reads
 // boot options. Members must serialize as an empty array, not null.
 func (h *handler) GetBootOptionCollection() (*server.BootOptionCollectionBootOptionCollection, error) {
-	if h.rm.IsDPU() {
+	id := h.rm.Identity()
+	if id.DPU {
 		return nil, fmt.Errorf("boot options not supported")
 	}
 
 	members := []server.OdataV4IdRef{}
-	if _, ok := h.rm.HostBootMAC(); ok {
+	if id.HostBootMAC != "" {
 		members = append(members, server.OdataV4IdRef{
-			OdataId: fmt.Sprintf("/redfish/v1/Systems/%s/BootOptions/%s", defaultComputerSystemId, hostBootOptionId),
+			OdataId: fmt.Sprintf("/redfish/v1/Systems/%s/BootOptions/%s", id.SystemID, hostBootOptionId),
 		})
 	}
 
 	return &server.BootOptionCollectionBootOptionCollection{
 		OdataContext:      "/redfish/v1/$metadata#BootOptionCollection.BootOptionCollection",
-		OdataId:           fmt.Sprintf("/redfish/v1/Systems/%s/BootOptions", defaultComputerSystemId),
+		OdataId:           fmt.Sprintf("/redfish/v1/Systems/%s/BootOptions", id.SystemID),
 		OdataType:         "#BootOptionCollection.BootOptionCollection",
 		Name:              "Boot Option Collection",
 		Members:           members,
@@ -868,15 +863,15 @@ func (h *handler) GetBootOptionCollection() (*server.BootOptionCollectionBootOpt
 // nico's SetBootOrder matches it, and its BootOptionReference equals
 // Boot.BootOrder[0] so CheckBootOrder passes. Host-only.
 func (h *handler) GetBootOption(optionID string) (*server.BootOptionV105BootOption, error) {
-	mac, ok := h.rm.HostBootMAC()
-	if h.rm.IsDPU() || !ok || optionID != hostBootOptionId {
+	id := h.rm.Identity()
+	if id.DPU || id.HostBootMAC == "" || optionID != hostBootOptionId {
 		return nil, fmt.Errorf("boot option not found: %s", optionID)
 	}
 
-	displayName := fmt.Sprintf("Boot NIC %s (HTTP(S) IPv4)", strings.ToUpper(mac))
+	displayName := fmt.Sprintf("Boot NIC %s (HTTP(S) IPv4)", strings.ToUpper(id.HostBootMAC))
 	return &server.BootOptionV105BootOption{
 		OdataContext:        "/redfish/v1/$metadata#BootOption.BootOption",
-		OdataId:             fmt.Sprintf("/redfish/v1/Systems/%s/BootOptions/%s", defaultComputerSystemId, optionID),
+		OdataId:             fmt.Sprintf("/redfish/v1/Systems/%s/BootOptions/%s", id.SystemID, optionID),
 		OdataType:           "#BootOption.v1_0_5.BootOption",
 		Id:                  optionID,
 		Name:                "Boot Option",
@@ -895,7 +890,7 @@ func (h *handler) GetBootOption(optionID string) (*server.BootOptionV105BootOpti
 // lowercase, trailing-slash paths with no generated route, so these are
 // registered directly in the emulator. A DPU BMC never receives them.
 func (h *handler) HandleHostConfigNoop(w http.ResponseWriter, r *http.Request) {
-	if h.rm.IsDPU() {
+	if h.rm.Identity().DPU {
 		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}
@@ -910,13 +905,14 @@ func (h *handler) HandleHostConfigNoop(w http.ResponseWriter, r *http.Request) {
 // they are served empty. No generated route exists for this path, so it is
 // registered directly in the emulator. Host-only.
 func (h *handler) HandleHostBiosOemBoot(w http.ResponseWriter, r *http.Request) {
-	if h.rm.IsDPU() {
+	id := h.rm.Identity()
+	if id.DPU {
 		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}
 
 	body := map[string]interface{}{
-		"@odata.id":                 fmt.Sprintf("/redfish/v1/Systems/%s/Bios/oem/hpe/boot/", defaultComputerSystemId),
+		"@odata.id":                 fmt.Sprintf("/redfish/v1/Systems/%s/Bios/oem/hpe/boot/", id.SystemID),
 		"@odata.type":               "#HpeServerBootSettings.v2_0_0.HpeServerBootSettings",
 		"Id":                        "boot",
 		"Name":                      "Boot Order Current Settings",

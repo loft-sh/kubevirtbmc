@@ -18,8 +18,8 @@ type VirtualMediaAdapter struct {
 	virtualMedia *server.VirtualMediaV163VirtualMedia
 }
 
-func NewVirtualMedia(id, name string) *VirtualMediaAdapter {
-	odataId := fmt.Sprintf("/redfish/v1/Managers/BMC/VirtualMedia/%s", id)
+func NewVirtualMedia(managerID, id, name string) *VirtualMediaAdapter {
+	odataId := fmt.Sprintf("/redfish/v1/Managers/%s/VirtualMedia/%s", managerID, id)
 	generatedVirtualMedia := &server.VirtualMediaV163VirtualMedia{
 		OdataContext: "/redfish/v1/$metadata#VirtualMedia.VirtualMedia",
 		OdataId:      odataId,

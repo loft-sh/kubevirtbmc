@@ -16,12 +16,62 @@ const (
 	testPassword = "admin123"
 )
 
-func TestAuthenticate(t *testing.T) {
-	ctl := gomock.NewController(t)
-	defer ctl.Finish()
+// The identities carry values that differ from the defaults, so a test passing
+// proves the handlers serve what the VM annotations configured.
+var (
+	testDPUIdentity = resourcemanager.Identity{
+		DPU:                    true,
+		Vendor:                 "Nvidia",
+		Product:                "BlueField-3 DPU",
+		Manufacturer:           "Nvidia",
+		Model:                  "BlueField-3 DPU",
+		SystemID:               "Bluefield",
+		ManagerID:              "Bluefield_BMC",
+		SystemSerial:           "MT2345ABCD",
+		DPUModel:               "BlueField-3 SuperNIC",
+		PartNumber:             "900-9D3B6-00CV-AA9",
+		Mode:                   "DpuMode",
+		BaseMAC:                "02:00:00:00:00:01",
+		HostRshim:              "Disabled",
+		BMCFirmware:            "BF-25.10-21",
+		CECFirmware:            "00.02.0195.0000_n03",
+		NICFirmware:            "32.47.2683",
+		UEFIFirmware:           "4.13.2-12-gabcdef",
+		SysImageFirmware:       "0200:0000:0000:0001",
+		BSPFirmware:            "4.5.0.12985",
+		PCIeDevicePartNumber:   "900-9D3B6-00CV-AA0",
+		PCIeDeviceManufacturer: "NVIDIA",
+		OOBInterface:           "oob_net0",
+	}
 
-	mockRM := resourcemanager.NewMockResourceManager(ctl)
-	h := NewHandler(testUsername, testPassword, mockRM)
+	testHostIdentity = resourcemanager.Identity{
+		Vendor:                 "HPE",
+		Manufacturer:           "Acme",
+		Model:                  "Acme 1000",
+		SystemID:               "1",
+		ManagerID:              testHostManagerID,
+		SystemSerial:           "HOSTSERIAL1",
+		PCIeDeviceSerial:       "MT2345ABCD",
+		PCIeDevicePartNumber:   "900-9D3B6-00CV-AA0",
+		PCIeDeviceManufacturer: "NVIDIA",
+		HostBootMAC:            testBootMAC,
+	}
+)
+
+// newTestHandler returns a handler whose resource manager reports id. Tests add
+// expectations for the calls they exercise on the returned mock.
+func newTestHandler(t *testing.T, id resourcemanager.Identity) (*handler, *resourcemanager.MockResourceManager) {
+	t.Helper()
+
+	mockRM := resourcemanager.NewMockResourceManager(gomock.NewController(t))
+	mockRM.EXPECT().Identity().Return(id).AnyTimes()
+	mockRM.EXPECT().PasswordHash().Return("").AnyTimes()
+
+	return NewHandler(testUsername, testPassword, mockRM), mockRM
+}
+
+func TestAuthenticate(t *testing.T) {
+	h, _ := newTestHandler(t, testHostIdentity)
 
 	testCases := []struct {
 		username    string
@@ -133,140 +183,77 @@ func TestDeleteSession(t *testing.T) {
 }
 
 func TestPatchComputerSystem(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockRM := resourcemanager.NewMockResourceManager(ctrl)
-	handler := NewHandler(testUsername, testPassword, mockRM)
+	once := server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEENABLED_ONCE
+	continuous := server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEENABLED_CONTINUOUS
+	disabled := server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEENABLED_DISABLED
 
 	testCases := []struct {
 		name        string
-		boot        server.ComputerSystemV1220Boot
+		enabled     server.ComputerSystemV1220BootSourceOverrideEnabled
+		target      server.ComputerSystemBootSource
+		expect      func(rm *resourcemanager.MockResourceManager)
 		expectError bool
-		mockSetup   func()
 	}{
 		{
-			name: "disabled boot source override",
-			boot: server.ComputerSystemV1220Boot{
-				BootSourceOverrideEnabled: server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEENABLED_DISABLED,
+			name:    "once arms a one-time boot",
+			enabled: once,
+			target:  server.COMPUTERSYSTEMBOOTSOURCE_UEFI_HTTP,
+			expect: func(rm *resourcemanager.MockResourceManager) {
+				rm.EXPECT().SetBootOnce(server.COMPUTERSYSTEMBOOTSOURCE_UEFI_HTTP).Return(nil)
 			},
-			mockSetup:   func() {},
-			expectError: false,
 		},
 		{
-			name: "valid boot source override target to PXE (once)",
-			boot: server.ComputerSystemV1220Boot{
-				BootSourceOverrideEnabled: server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEENABLED_ONCE,
-				BootSourceOverrideTarget:  server.COMPUTERSYSTEMBOOTSOURCE_PXE,
+			name:    "disabled cancels a pending one-time boot",
+			enabled: disabled,
+			expect: func(rm *resourcemanager.MockResourceManager) {
+				rm.EXPECT().SetBootOnce(server.COMPUTERSYSTEMBOOTSOURCE_NONE).Return(nil)
 			},
-			mockSetup: func() {
-				mockRM.EXPECT().SetBootDevice(resourcemanager.BootDevicePxe).Return(nil)
-			},
-			expectError: false,
 		},
 		{
-			name: "valid boot source override target to PXE (continuous)",
-			boot: server.ComputerSystemV1220Boot{
-				BootSourceOverrideEnabled: server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEENABLED_CONTINUOUS,
-				BootSourceOverrideTarget:  server.COMPUTERSYSTEMBOOTSOURCE_PXE,
+			name:    "continuous PXE is persistent",
+			enabled: continuous,
+			target:  server.COMPUTERSYSTEMBOOTSOURCE_PXE,
+			expect: func(rm *resourcemanager.MockResourceManager) {
+				rm.EXPECT().SetBootDevice(resourcemanager.BootDevicePxe).Return(nil)
 			},
-			mockSetup: func() {
-				mockRM.EXPECT().SetBootDevice(resourcemanager.BootDevicePxe).Return(nil)
-			},
-			expectError: false,
 		},
 		{
-			name: "valid boot source override target to HDD (once)",
-			boot: server.ComputerSystemV1220Boot{
-				BootSourceOverrideEnabled: server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEENABLED_ONCE,
-				BootSourceOverrideTarget:  server.COMPUTERSYSTEMBOOTSOURCE_HDD,
+			name:    "continuous HDD is persistent",
+			enabled: continuous,
+			target:  server.COMPUTERSYSTEMBOOTSOURCE_HDD,
+			expect: func(rm *resourcemanager.MockResourceManager) {
+				rm.EXPECT().SetBootDevice(resourcemanager.BootDeviceHdd).Return(nil)
 			},
-			mockSetup: func() {
-				mockRM.EXPECT().SetBootDevice(resourcemanager.BootDeviceHdd).Return(nil)
-			},
-			expectError: false,
 		},
 		{
-			name: "valid boot source override target to HDD (continuous)",
-			boot: server.ComputerSystemV1220Boot{
-				BootSourceOverrideEnabled: server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEENABLED_CONTINUOUS,
-				BootSourceOverrideTarget:  server.COMPUTERSYSTEMBOOTSOURCE_HDD,
+			name:    "continuous CD is persistent",
+			enabled: continuous,
+			target:  server.COMPUTERSYSTEMBOOTSOURCE_CD,
+			expect: func(rm *resourcemanager.MockResourceManager) {
+				rm.EXPECT().SetBootDevice(resourcemanager.BootDeviceCd).Return(nil)
 			},
-			mockSetup: func() {
-				mockRM.EXPECT().SetBootDevice(resourcemanager.BootDeviceHdd).Return(nil)
-			},
-			expectError: false,
 		},
 		{
-			name: "invalid boot source override target (once)",
-			boot: server.ComputerSystemV1220Boot{
-				BootSourceOverrideEnabled: server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEENABLED_ONCE,
-				BootSourceOverrideTarget:  "INVALID_TARGET",
-			},
-			mockSetup:   func() {},
-			expectError: false,
+			name:    "continuous unknown target is ignored",
+			enabled: continuous,
+			target:  "INVALID_TARGET",
+			expect:  func(rm *resourcemanager.MockResourceManager) {},
 		},
 		{
-			name: "invalid boot source override target (continuous)",
-			boot: server.ComputerSystemV1220Boot{
-				BootSourceOverrideEnabled: server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEENABLED_CONTINUOUS,
-				BootSourceOverrideTarget:  "INVALID_TARGET",
-			},
-			mockSetup:   func() {},
-			expectError: false,
-		},
-		{
-			name: "failed to set PXE boot device",
-			boot: server.ComputerSystemV1220Boot{
-				BootSourceOverrideEnabled: server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEENABLED_ONCE,
-				BootSourceOverrideTarget:  server.COMPUTERSYSTEMBOOTSOURCE_PXE,
-			},
-			mockSetup: func() {
-				mockRM.EXPECT().SetBootDevice(resourcemanager.BootDevicePxe).Return(assert.AnError)
+			name:    "once rejected by the resource manager",
+			enabled: once,
+			target:  server.COMPUTERSYSTEMBOOTSOURCE_PXE,
+			expect: func(rm *resourcemanager.MockResourceManager) {
+				rm.EXPECT().SetBootOnce(server.COMPUTERSYSTEMBOOTSOURCE_PXE).Return(assert.AnError)
 			},
 			expectError: true,
 		},
 		{
-			name: "failed to set HDD boot device",
-			boot: server.ComputerSystemV1220Boot{
-				BootSourceOverrideEnabled: server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEENABLED_ONCE,
-				BootSourceOverrideTarget:  server.COMPUTERSYSTEMBOOTSOURCE_HDD,
-			},
-			mockSetup: func() {
-				mockRM.EXPECT().SetBootDevice(resourcemanager.BootDeviceHdd).Return(assert.AnError)
-			},
-			expectError: true,
-		},
-		{
-			name: "valid boot source override target to Cd (once)",
-			boot: server.ComputerSystemV1220Boot{
-				BootSourceOverrideEnabled: server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEENABLED_ONCE,
-				BootSourceOverrideTarget:  server.COMPUTERSYSTEMBOOTSOURCE_CD,
-			},
-			mockSetup: func() {
-				mockRM.EXPECT().SetBootDevice(resourcemanager.BootDeviceCd).Return(nil)
-			},
-			expectError: false,
-		},
-		{
-			name: "valid boot source override target to Cd (continuous)",
-			boot: server.ComputerSystemV1220Boot{
-				BootSourceOverrideEnabled: server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEENABLED_CONTINUOUS,
-				BootSourceOverrideTarget:  server.COMPUTERSYSTEMBOOTSOURCE_CD,
-			},
-			mockSetup: func() {
-				mockRM.EXPECT().SetBootDevice(resourcemanager.BootDeviceCd).Return(nil)
-			},
-			expectError: false,
-		},
-		{
-			name: "failed to set Cd boot device",
-			boot: server.ComputerSystemV1220Boot{
-				BootSourceOverrideEnabled: server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEENABLED_ONCE,
-				BootSourceOverrideTarget:  server.COMPUTERSYSTEMBOOTSOURCE_CD,
-			},
-			mockSetup: func() {
-				mockRM.EXPECT().SetBootDevice(resourcemanager.BootDeviceCd).Return(assert.AnError)
+			name:    "persistent device failure is returned",
+			enabled: continuous,
+			target:  server.COMPUTERSYSTEMBOOTSOURCE_HDD,
+			expect: func(rm *resourcemanager.MockResourceManager) {
+				rm.EXPECT().SetBootDevice(resourcemanager.BootDeviceHdd).Return(assert.AnError)
 			},
 			expectError: true,
 		},
@@ -274,10 +261,14 @@ func TestPatchComputerSystem(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			tc.mockSetup()
+			h, mockRM := newTestHandler(t, testHostIdentity)
+			tc.expect(mockRM)
 
-			err := handler.PatchComputerSystem(&server.ComputerSystemV1220ComputerSystem{
-				Boot: tc.boot,
+			err := h.PatchComputerSystem(&server.ComputerSystemV1220ComputerSystem{
+				Boot: server.ComputerSystemV1220Boot{
+					BootSourceOverrideEnabled: tc.enabled,
+					BootSourceOverrideTarget:  tc.target,
+				},
 			})
 
 			if tc.expectError {
@@ -287,6 +278,20 @@ func TestPatchComputerSystem(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestVerifyCredentials(t *testing.T) {
+	hash, err := session.HashPassword("rotated")
+	assert.NoError(t, err)
+
+	mockRM := resourcemanager.NewMockResourceManager(gomock.NewController(t))
+	mockRM.EXPECT().PasswordHash().Return(hash).AnyTimes()
+	h := NewHandler(testUsername, testPassword, mockRM)
+
+	// Once the password was rotated, the startup password stops working.
+	assert.True(t, h.VerifyCredentials(testUsername, "rotated"))
+	assert.False(t, h.VerifyCredentials(testUsername, testPassword))
+	assert.False(t, h.VerifyCredentials("other", "rotated"))
 }
 
 func TestComputerSystemReset(t *testing.T) {

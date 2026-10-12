@@ -16,10 +16,10 @@ type EthernetInterfaceAdapter struct {
 	ethernetInterface *server.EthernetInterfaceV1120EthernetInterface
 }
 
-func NewEthernetInterface(id, name, macAddress string, enabled bool, linkStatus server.EthernetInterfaceV1120LinkStatus) *EthernetInterfaceAdapter {
+func NewEthernetInterface(systemID, id, name, macAddress string, enabled bool, linkStatus server.EthernetInterfaceV1120LinkStatus) *EthernetInterfaceAdapter {
 	generatedEthernetInterface := &server.EthernetInterfaceV1120EthernetInterface{
 		OdataContext:     "/redfish/v1/$metadata#EthernetInterface.EthernetInterface",
-		OdataId:          fmt.Sprintf("/redfish/v1/Systems/1/EthernetInterfaces/%s", id),
+		OdataId:          fmt.Sprintf("/redfish/v1/Systems/%s/EthernetInterfaces/%s", systemID, id),
 		OdataType:        "#EthernetInterface.v1_12_0.EthernetInterface",
 		Id:               id,
 		Name:             name,

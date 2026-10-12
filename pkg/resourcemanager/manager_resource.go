@@ -2,7 +2,6 @@ package resourcemanager
 
 import (
 	"fmt"
-	"time"
 
 	"kubevirt.io/kubevirtbmc/pkg/generated/redfish/server"
 	"kubevirt.io/kubevirtbmc/pkg/util"
@@ -37,7 +36,6 @@ func NewManager(id, name string) *ManagerAdapter {
 				Title:  "Reset",
 			},
 		},
-		DateTime: util.Ptr(time.Now()),
 		EthernetInterfaces: server.OdataV4IdRef{
 			OdataId: fmt.Sprintf("/redfish/v1/Managers/%s/EthernetInterfaces", id),
 		},

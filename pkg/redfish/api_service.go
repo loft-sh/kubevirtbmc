@@ -30473,7 +30473,9 @@ func (s *APIService) RedfishV1ManagersManagerIdPatch(ctx context.Context, manage
 	// TODO: Uncomment the next line to return response Response(0, RedfishError{}) or use other options such as http.Ok ...
 	// return Response(0, RedfishError{}), nil
 
-	return server.Response(http.StatusNotImplemented, nil), errors.New("RedfishV1ManagersManagerIdPatch method not implemented")
+	// nico PATCHes the Manager only to toggle lockdown mode; this simulated BMC has no
+	// such state to change, so accept it as a no-op.
+	return server.Response(http.StatusNoContent, nil), nil
 }
 
 // RedfishV1ManagersManagerIdActionsManagerForceFailoverPost -

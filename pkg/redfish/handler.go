@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -164,6 +165,10 @@ func (h *handler) GetManager() (*server.ManagerV1190Manager, error) {
 	}
 
 	mgr := adapter.Manager()
+
+	// DateTime is computed per request so nico's preingestion clock-drift gate
+	// (hard ±300s) always sees a current time, regardless of BMC pod age.
+	mgr.DateTime = util.Ptr(time.Now())
 
 	// A host reports the iLO firmware version and Oem.Hpe.VirtualNICEnabled that
 	// nico's HPE client reads: lockdown_status treats the BMC as "fully disabled"

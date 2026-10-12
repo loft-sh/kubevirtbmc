@@ -76644,10 +76644,9 @@ func (c *DefaultAPIController) RedfishV1ManagersManagerIdPatch(w http.ResponseWr
 		c.errorHandler(w, r, &ParsingError{Err: err}, nil)
 		return
 	}
-	if err := AssertManagerV1190ManagerRequired(managerV1190ManagerParam); err != nil {
-		c.errorHandler(w, r, err, nil)
-		return
-	}
+	// Redfish PATCH is a partial update: required-field validation belongs to full
+	// representations (GET responses), not PATCH request bodies which carry only the
+	// changed properties. Skip the Required assert so a partial Manager PATCH is accepted.
 	if err := AssertManagerV1190ManagerConstraints(managerV1190ManagerParam); err != nil {
 		c.errorHandler(w, r, err, nil)
 		return
@@ -78513,10 +78512,9 @@ func (c *DefaultAPIController) RedfishV1ManagersManagerIdNetworkProtocolPatch(w 
 		c.errorHandler(w, r, &ParsingError{Err: err}, nil)
 		return
 	}
-	if err := AssertManagerNetworkProtocolV1100ManagerNetworkProtocolRequired(managerNetworkProtocolV1100ManagerNetworkProtocolParam); err != nil {
-		c.errorHandler(w, r, err, nil)
-		return
-	}
+	// Redfish PATCH is a partial update: required-field validation belongs to full
+	// representations (GET responses), not PATCH request bodies which carry only the
+	// changed properties. Skip the Required assert so a protocol-toggle-only PATCH is accepted.
 	if err := AssertManagerNetworkProtocolV1100ManagerNetworkProtocolConstraints(managerNetworkProtocolV1100ManagerNetworkProtocolParam); err != nil {
 		c.errorHandler(w, r, err, nil)
 		return
